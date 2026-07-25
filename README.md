@@ -1,5 +1,8 @@
 # PatchBukkit
 
+> [!CAUTION]
+> Not working currently due to the old native api being phased out. work is being done on a new API. 
+
 A plugin for [PumpkinMC](https://pumpkinmc.org/) that adds support for [PaperMC](https://papermc.io/), [Spigot](https://www.spigotmc.org/), and [Bukkit](https://dev.bukkit.org/) plugins.
 
 ## Installation
