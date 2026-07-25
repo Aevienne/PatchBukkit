@@ -39,11 +39,5 @@ public final class UnsafeValuesTests {
         assertTrue(!supported, "isSupportedApiVersion(\"1.0\") should be false");
     }
 
-    @ConformanceTest(name = "UnsafeValues.componentFlattener() returns non-null", category = TestCategory.UNSAFE_VALUES)
-    public void testComponentFlattener() {
-        UnsafeValues unsafe = Bukkit.getUnsafe();
-        ComponentFlattener flattener = unsafe.componentFlattener();
-        assertNotNull(flattener, "UnsafeValues.componentFlattener()");
-    }
 
 }

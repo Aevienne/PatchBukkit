@@ -84,7 +84,7 @@ impl ServiceGenerator for FfiServiceGenerator {
         };
 
         for method in &service.methods {
-            let fn_name = format!("ffi_{}_{}", to_snake_case(&service.name), &method.name);
+            let fn_name = format!("ffi_{}_{}", to_snake_case(&service.name), method.name);
             let input_type = self.proto_type_to_rust(&method.input_proto_type);
 
             service_info.methods.push(MethodInfo {

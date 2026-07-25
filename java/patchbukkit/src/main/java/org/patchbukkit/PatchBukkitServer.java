@@ -14,6 +14,7 @@ import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.net.InetAddress;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -100,7 +101,6 @@ import patchbukkit.bridge.NativeBridgeFfi;
 import patchbukkit.log.LogLevel;
 import patchbukkit.log.SendLogRequest;
 
-@SuppressWarnings("removal")
 public class PatchBukkitServer implements Server {
 
     private final String serverName =
@@ -224,7 +224,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull String getVersion() {
-        return "1.21.11";
+        return "26.2";
     }
 
     @Override
@@ -1870,5 +1870,11 @@ public class PatchBukkitServer implements Server {
         throw new UnsupportedOperationException(
             "Unimplemented method 'allowPausing'"
         );
+    }
+
+    @Override
+    public @NotNull Path getLevelDirectory() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getLevelDirectory'");
     }
 }

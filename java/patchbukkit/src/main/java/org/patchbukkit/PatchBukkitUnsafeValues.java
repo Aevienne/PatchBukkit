@@ -16,7 +16,6 @@ import net.kyori.adventure.text.event.HoverEvent.ShowItem;
 import net.kyori.adventure.text.flattener.ComponentFlattener;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import patchbukkit.bridge.NativeBridgeFfi;
 
@@ -51,7 +50,6 @@ import org.patchbukkit.versioning.ApiVersion;
 import org.patchbukkit.versioning.Versioning;
 import patchbukkit.common.EmptyRequest;
 
-@SuppressWarnings("removal")
 public class PatchBukkitUnsafeValues implements UnsafeValues {
 
     public static final PatchBukkitUnsafeValues INSTANCE =
@@ -76,48 +74,7 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
         }
     }
 
-	@Override
-	public ComponentFlattener componentFlattener() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'componentFlattener'");
-	}
 
-	@Override
-	public PlainComponentSerializer plainComponentSerializer() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'plainComponentSerializer'");
-	}
-
-	@Override
-	public PlainTextComponentSerializer plainTextSerializer() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'plainTextSerializer'");
-	}
-
-	@Override
-	public GsonComponentSerializer gsonComponentSerializer() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'gsonComponentSerializer'");
-	}
-
-	@Override
-	public GsonComponentSerializer colorDownsamplingGsonComponentSerializer() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'colorDownsamplingGsonComponentSerializer'");
-	}
-
-	@Override
-	public LegacyComponentSerializer legacyComponentSerializer() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'legacyComponentSerializer'");
-	}
-
-	@Override
-	public Component resolveWithContext(Component component, CommandSender context, Entity scoreboardSubject,
-			boolean bypassPermissions) throws IOException {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'resolveWithContext'");
-	}
 
 	@Override
 	public Material toLegacy(Material material) {
@@ -183,60 +140,6 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 	}
 
 	@Override
-	public Multimap<Attribute, AttributeModifier> getDefaultAttributeModifiers(Material material, EquipmentSlot slot) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getDefaultAttributeModifiers'");
-	}
-
-	@Override
-	public CreativeCategory getCreativeCategory(Material material) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getCreativeCategory'");
-	}
-
-	@Override
-	public String getBlockTranslationKey(Material material) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getBlockTranslationKey'");
-	}
-
-	@Override
-	public String getItemTranslationKey(Material material) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getItemTranslationKey'");
-	}
-
-	@Override
-	public String getTranslationKey(EntityType entityType) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getTranslationKey'");
-	}
-
-	@Override
-	public String getTranslationKey(ItemStack itemStack) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getTranslationKey'");
-	}
-
-	@Override
-	public String getTranslationKey(Attribute attribute) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getTranslationKey'");
-	}
-
-	@Override
-	public InternalPotionData getInternalPotionData(NamespacedKey key) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getInternalPotionData'");
-	}
-
-	@Override
-	public @NotNull Builder createDamageSourceBuilder(@NotNull DamageType damageType) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'createDamageSourceBuilder'");
-	}
-
-	@Override
 	public String get(Class<?> aClass, String value) {
 		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'get'");
@@ -246,20 +149,6 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 	public <B extends Keyed> B get(RegistryKey<B> registry, NamespacedKey key) {
 		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'get'");
-	}
-
-	@Override
-	public byte[] serializeItem(ItemStack item) {
-	    System.out.println("Serializing item: " + item);
-	    System.out.println(item.getType().getKey().getKey());
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'serializeItem'");
-	}
-
-	@Override
-	public ItemStack deserializeItem(byte[] data) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'deserializeItem'");
 	}
 
 	@Override
@@ -288,11 +177,6 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 		throw new UnsupportedOperationException("Unimplemented method 'deserializeEntity'");
 	}
 
-	@Override
-	public int nextEntityId() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'nextEntityId'");
-	}
 
 	@Override
 	public @NotNull String getMainLevelName() {
@@ -306,74 +190,7 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 		throw new UnsupportedOperationException("Unimplemented method 'getProtocolVersion'");
 	}
 
-	@Override
-	public boolean isValidRepairItemStack(@NotNull ItemStack itemToBeRepaired, @NotNull ItemStack repairMaterial) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'isValidRepairItemStack'");
-	}
 
-	@Override
-	public boolean hasDefaultEntityAttributes(@NotNull NamespacedKey entityKey) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'hasDefaultEntityAttributes'");
-	}
-
-	@Override
-	public @NotNull Attributable getDefaultEntityAttributes(@NotNull NamespacedKey entityKey) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getDefaultEntityAttributes'");
-	}
-
-	@Override
-	public @NotNull NamespacedKey getBiomeKey(RegionAccessor accessor, int x, int y, int z) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getBiomeKey'");
-	}
-
-	@Override
-	public void setBiomeKey(RegionAccessor accessor, int x, int y, int z, NamespacedKey biomeKey) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'setBiomeKey'");
-	}
-
-	@Override
-	public String getStatisticCriteriaKey(@NotNull Statistic statistic) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getStatisticCriteriaKey'");
-	}
-
-	@Override
-	public @Nullable Color getSpawnEggLayerColor(EntityType entityType, int layer) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getSpawnEggLayerColor'");
-	}
-
-	@Override
-	public LifecycleEventManager<Plugin> createPluginLifecycleEventManager(JavaPlugin plugin,
-			BooleanSupplier registrationCheck) {
-		return new PatchBukkitLifecycleEventManager(plugin, registrationCheck);
-	}
-
-	@Override
-	public @NotNull List<Component> computeTooltipLines(@NotNull ItemStack itemStack,
-			@NotNull TooltipContext tooltipContext, @Nullable Player player) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'computeTooltipLines'");
-	}
-
-	@Override
-	public ItemStack createEmptyStack() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'createEmptyStack'");
-	}
-
-	@Override
-	public @NotNull Map<String, Object> serializeStack(ItemStack itemStack) {
-        System.out.println("Serializing itemstack: " + itemStack);
-        System.out.println(itemStack.getType().getKey().getKey());
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'serializeStack'");
-	}
 
 	@Override
 	public @NotNull ItemStack deserializeStack(@NotNull Map<String, Object> args) {
@@ -387,4 +204,18 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("Unimplemented method 'deserializeItemHover'");
 	}
+
+	@Override
+	public InternalPotionData getInternalPotionData(NamespacedKey key) {
+		// TODO Auto-generated method stub
+		throw new UnsupportedOperationException("Unimplemented method 'getInternalPotionData'");
+	}
+
+	@Override
+	public int nextEntityId(World world) {
+		// TODO Auto-generated method stub
+		throw new UnsupportedOperationException("Unimplemented method 'nextEntityId'");
+	}
+
+	
 }

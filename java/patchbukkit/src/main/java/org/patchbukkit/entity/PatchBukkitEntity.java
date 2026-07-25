@@ -12,6 +12,7 @@ import org.bukkit.EntityEffect;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.PistonMoveReaction;
@@ -45,6 +46,7 @@ import io.papermc.paper.datacomponent.DataComponentType.Valued;
 import io.papermc.paper.entity.LookAnchor;
 import io.papermc.paper.entity.TeleportFlag;
 import io.papermc.paper.threadedregions.scheduler.EntityScheduler;
+import net.kyori.adventure.sound.Sound.Source;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.util.TriState;
 import patchbukkit.bridge.NativeBridgeFfi;
@@ -984,5 +986,17 @@ public class PatchBukkitEntity implements Entity {
     public void broadcastHurtAnimation(@NotNull Collection<Player> players) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'broadcastHurtAnimation'");
+    }
+
+    @Override
+    public Source soundSource() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'soundSource'");
+    }
+
+    @Override
+    public @NotNull SoundCategory getSoundCategory() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getSoundCategory'");
     }
 }

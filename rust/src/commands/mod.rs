@@ -34,7 +34,7 @@ pub struct AnyCommandNode {
 }
 
 impl GetClientSideArgParser for AnyCommandNode {
-    fn get_client_side_parser(&self) -> ArgumentType<'_> {
+    fn get_client_side_parser(&self) -> ArgumentType {
         ArgumentType::String(StringProtoArgBehavior::GreedyPhrase)
     }
 

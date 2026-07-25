@@ -839,4 +839,29 @@ public class PatchBukkitLivingEntity
     public @Nullable Color getWaypointColor() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getWaypointColor'");
+    }
+    @Override
+    public void kill(DamageSource damageSource) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'kill'");
+    }
+    @Override
+    public boolean addPotionEffect(@NotNull PotionEffect effect) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'addPotionEffect'");
+    }
+    @Override
+    public float getSoundVolume() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getSoundVolume'");
+    }
+    @Override
+    public float getSoundPitch() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getSoundPitch'");
+    }
+    @Override
+    public @Nullable Sound getHurtSound(@NotNull DamageSource damageSource) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getHurtSound'");
     }}

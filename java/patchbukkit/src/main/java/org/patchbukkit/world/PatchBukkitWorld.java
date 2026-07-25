@@ -1,5 +1,8 @@
 package org.patchbukkit.world;
 
+import io.papermc.paper.entity.poi.PoiSearchResult;
+import io.papermc.paper.entity.poi.PoiType;
+import io.papermc.paper.entity.poi.PoiType.Occupancy;
 import io.papermc.paper.math.Position;
 import io.papermc.paper.raytracing.PositionedRayTraceConfigurationBuilder;
 import java.nio.file.Path;
@@ -25,6 +28,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.*;
 import org.bukkit.util.Vector;
+import org.checkerframework.checker.index.qual.Positive;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
@@ -1698,5 +1702,25 @@ public class PatchBukkitWorld
         throw new UnsupportedOperationException(
             "Unimplemented method 'getListeningPluginChannels'"
         );
+    }
+
+    @Override
+    public void setAllowMonsterSpawning(boolean allowMonsters) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'setAllowMonsterSpawning'");
+    }
+
+    @Override
+    public @Nullable Location locateNearestPoi(@NotNull Location origin, @NotNull PoiType poiType, @Positive int radius,
+            @NotNull Occupancy occupancy) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'locateNearestPoi'");
+    }
+
+    @Override
+    public @NotNull List<PoiSearchResult> locateAllPoiInRange(@NotNull Location origin,
+            @NotNull Predicate<PoiType> poiTypePredicate, @Positive int radius, @NotNull Occupancy occupancy) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'locateAllPoiInRange'");
     }
 }
