@@ -76,9 +76,10 @@ public class PatchBukkitPluginLoader implements PluginLoader {
 
             Class<?> jarClass = Class.forName(mainClass, true, classLoader);
             return (JavaPlugin) jarClass.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            System.err.println("[PatchBukkit] Failed to instantiate plugin class " + mainClass + ": " + e.getMessage());
             e.printStackTrace();
-            return null;
+            throw new RuntimeException("Failed to instantiate plugin " + mainClass, e);
         }
     }
 

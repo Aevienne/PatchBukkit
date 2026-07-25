@@ -1589,10 +1589,7 @@ public class PatchBukkitServer implements Server {
     public <T extends Keyed> @Nullable Registry<T> getRegistry(
         @NotNull Class<T> tClass
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getRegistry'"
-        );
+        return io.papermc.paper.registry.RegistryAccess.registryAccess().getRegistry(tClass);
     }
 
     @Override

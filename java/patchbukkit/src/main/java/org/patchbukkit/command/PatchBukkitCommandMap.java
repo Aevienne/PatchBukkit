@@ -59,8 +59,14 @@ public class PatchBukkitCommandMap implements CommandMap {
 
     @Override
     public boolean dispatch(@NotNull CommandSender sender, @NotNull String cmdLine) throws CommandException {
-        // Remove leading slash if present and split arguments
-        String[] split = (cmdLine.startsWith("/") ? cmdLine.substring(1) : cmdLine).split(" ");
+        if (cmdLine == null) return false;
+        String cleanLine = cmdLine.trim();
+        if (cleanLine.startsWith("/")) {
+            cleanLine = cleanLine.substring(1).trim();
+        }
+        if (cleanLine.isEmpty()) return false;
+
+        String[] split = cleanLine.split("\\s+");
         if (split.length == 0) return false;
 
         String sentLabel = split[0].toLowerCase();

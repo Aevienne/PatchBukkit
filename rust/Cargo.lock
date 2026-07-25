@@ -1800,9 +1800,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "j4rs"
-version = "0.24.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19df11b7e099dfa6c1d3d9ec600dc95d4130b24a2196181cbb7dfcd75936f4a9"
+checksum = "1fbaca95c5c7799ed193fc8aa789568f9d31a9d01381460227ef0074fea1855f"
 dependencies = [
  "cesu8",
  "dunce",

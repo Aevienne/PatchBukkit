@@ -44,23 +44,29 @@ public class PatchBukkitPluginManager implements PluginManager {
         throws IllegalArgumentException {}
 
     public void registerPlugin(@NotNull Plugin plugin) {
-        plugins.put(plugin.getName().toLowerCase(), plugin);
+        plugins.put(plugin.getName().toLowerCase(java.util.Locale.ENGLISH), plugin);
+        for (String provided : plugin.getDescription().getProvides()) {
+            plugins.putIfAbsent(provided.toLowerCase(java.util.Locale.ENGLISH), plugin);
+        }
     }
 
-   @Override
+    @Override
     public @Nullable Plugin getPlugin(@NotNull String name) {
-        return plugins.get(name.toLowerCase());
+        if (name == null) {
+            return null;
+        }
+        return plugins.get(name.replace(' ', '_').toLowerCase(java.util.Locale.ENGLISH));
     }
 
-   @Override
+    @Override
     public @NotNull Plugin[] getPlugins() {
-        return plugins.values().toArray(new Plugin[0]);
+        return plugins.values().stream().distinct().toArray(Plugin[]::new);
     }
 
     @Override
     public boolean isPluginEnabled(@NotNull String name) {
         Plugin plugin = getPlugin(name);
-        return plugin != null && plugin.isEnabled();
+        return isPluginEnabled(plugin);
     }
 
     @Override
@@ -152,6 +158,9 @@ public class PatchBukkitPluginManager implements PluginManager {
 
     @Override
     public void enablePlugin(@NotNull Plugin plugin) {
+        if (plugin == null) {
+            return;
+        }
         if (!plugin.isEnabled()) {
             try {
                 plugin.getPluginLoader().enablePlugin(plugin);
@@ -163,6 +172,9 @@ public class PatchBukkitPluginManager implements PluginManager {
 
     @Override
     public void disablePlugin(@NotNull Plugin plugin) {
+        if (plugin == null) {
+            return;
+        }
         if (plugin.isEnabled()) {
             plugin.getPluginLoader().disablePlugin(plugin);
         }

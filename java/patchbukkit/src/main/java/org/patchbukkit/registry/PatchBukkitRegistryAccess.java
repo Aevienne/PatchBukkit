@@ -55,7 +55,7 @@ public class PatchBukkitRegistryAccess implements RegistryAccess {
         return (Registry<T>) instances.computeIfAbsent(registryKey, key -> {
             RegistryFactory<?, ?> factoryEntry = FACTORIES.get(key);
             if (factoryEntry != null) {
-                return buildRegistry(factoryEntry);
+                return buildRegistry((RegistryKey) key, factoryEntry);
             }
             // Return an empty registry for unsupported types
             return PatchBukkitRegistry.empty((RegistryKey) key);
@@ -63,11 +63,12 @@ public class PatchBukkitRegistryAccess implements RegistryAccess {
     }
 
     @SuppressWarnings("unchecked")
-    private static <P, B extends Keyed> PatchBukkitRegistry<P, B> buildRegistry(RegistryFactory<P, B> factory) {
+    private static <P, B extends Keyed> PatchBukkitRegistry<P, B> buildRegistry(RegistryKey<B> key, RegistryFactory<P, B> factory) {
         return new PatchBukkitRegistry<>(
                 factory.registryType(),
                 factory.extractor(),
-                factory.factory()
+                factory.factory(),
+                key
         );
     }
 

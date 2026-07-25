@@ -307,11 +307,37 @@ impl PluginManager {
             InvocationArg::empty(),
         )?;
         for plugin in self.plugins.values_mut() {
-            if plugin.instance.is_none() {
+            if plugin.state != PluginState::Loaded {
                 continue;
             }
-            let plugin_instance = plugin.instance.as_ref().unwrap();
-            let plugin_instance = jvm.clone_instance(plugin_instance).unwrap();
+            let plugin_instance = match plugin.instance.as_ref() {
+                Some(instance) => match jvm.clone_instance(instance) {
+                    Ok(cloned) => cloned,
+                    Err(e) => {
+                        plugin.state = PluginState::Errored;
+                        tracing::error!(
+                            "Failed to clone plugin instance handle for {}: {:?}",
+                            plugin.name,
+                            e
+                        );
+                        continue;
+                    }
+                },
+                None => continue,
+            };
+
+            // Register plugin instance with Java PatchBukkitServer before enabling
+            if let Ok(server) =
+                jvm.invoke_static("org.bukkit.Bukkit", "getServer", InvocationArg::empty())
+            {
+                let _ = jvm.invoke(
+                    &server,
+                    "registerPlugin",
+                    &[InvocationArg::from(
+                        jvm.clone_instance(&plugin_instance).unwrap(),
+                    )],
+                );
+            }
 
             let result = jvm.invoke(
                 &plugin_manager,
@@ -344,11 +370,21 @@ impl PluginManager {
             InvocationArg::empty(),
         )?;
         for plugin in self.plugins.values_mut() {
-            if plugin.instance.is_none() {
-                continue;
-            }
-            let plugin_instance = plugin.instance.as_ref().unwrap();
-            let plugin_instance = jvm.clone_instance(plugin_instance).unwrap();
+            let plugin_instance = match plugin.instance.as_ref() {
+                Some(instance) => match jvm.clone_instance(instance) {
+                    Ok(cloned) => cloned,
+                    Err(e) => {
+                        plugin.state = PluginState::Errored;
+                        tracing::error!(
+                            "Failed to clone plugin instance handle for {}: {:?}",
+                            plugin.name,
+                            e
+                        );
+                        continue;
+                    }
+                },
+                None => continue,
+            };
 
             let result = jvm.invoke(
                 &plugin_manager,
@@ -396,7 +432,7 @@ impl PluginManager {
                 Some(plugin) => plugin,
                 None => continue,
             };
-            let plugin_instance = jvm.invoke_static(
+            let plugin_instance = match jvm.invoke_static(
                 "org.patchbukkit.loader.PatchBukkitPluginLoader",
                 "createPlugin",
                 &[
@@ -405,7 +441,32 @@ impl PluginManager {
                     InvocationArg::try_from(&classpath)?,
                     InvocationArg::try_from(&libraries)?,
                 ],
-            )?;
+            ) {
+                Ok(instance) => {
+                    // Check if j4rs created a global reference for a null Java object
+                    if jvm
+                        .invoke(&instance, "toString", InvocationArg::empty())
+                        .is_err()
+                    {
+                        plugin.state = PluginState::Errored;
+                        tracing::error!(
+                            "Failed to instantiate PatchBukkit plugin {}: Java returned null instance",
+                            plugin.name
+                        );
+                        continue;
+                    }
+                    instance
+                }
+                Err(e) => {
+                    plugin.state = PluginState::Errored;
+                    tracing::error!(
+                        "Failed to instantiate PatchBukkit plugin {}: {:?}",
+                        plugin.name,
+                        e
+                    );
+                    continue;
+                }
+            };
 
             plugin.instance = Some(plugin_instance);
             for (cmd_name, cmd_data) in &plugin.commands {

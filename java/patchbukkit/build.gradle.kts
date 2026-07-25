@@ -1,9 +1,9 @@
 plugins {
     `java-library`
-    id("com.google.protobuf") version "0.9.6"
+    id("com.google.protobuf") version "0.10.0"
 }
 
-val protobufVersion = "4.33.5"
+val protobufVersion = "4.35.1"
 
 sourceSets {
     main {
@@ -47,7 +47,7 @@ repositories {
 dependencies {
     implementation("io.papermc.paper:paper-api:26.2.build.+")
     implementation("net.sf.jopt-simple:jopt-simple:6.0-alpha-3")
-    implementation("io.github.astonbitecode:j4rs:0.24.0")
+    implementation("io.github.astonbitecode:j4rs:0.25.0")
     implementation("org.apache.maven:maven-resolver-provider:3.9.6")
     implementation("org.apache.maven.resolver:maven-resolver-impl:1.9.18")
     implementation("org.apache.maven.resolver:maven-resolver-connector-basic:1.9.18")

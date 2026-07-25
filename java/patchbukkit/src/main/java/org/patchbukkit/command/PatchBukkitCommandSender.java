@@ -136,18 +136,14 @@ public class PatchBukkitCommandSender implements CommandSender, ServerOperator {
         if (message == null) {
             return;
         }
-        if (this.server != null && this.server.getLogger() != null) {
-            this.server.getLogger().info(message);
-        } else {
-            LogLevel logLevel = LogLevel.INFO;
-            NativeBridgeFfi.sendLog(
-                    SendLogRequest.newBuilder()
-                            .setLevel(logLevel)
-                            .setMessage(ChatColor.stripColor(message))
-                            .setLoggerName("console")
-                            .build()
-            );
-        }
+        LogLevel logLevel = LogLevel.INFO;
+        NativeBridgeFfi.sendLog(
+                SendLogRequest.newBuilder()
+                        .setLevel(logLevel)
+                        .setMessage(ChatColor.stripColor(message))
+                        .setLoggerName("Console")
+                        .build()
+        );
     }
 
     @Override
