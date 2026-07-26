@@ -15,6 +15,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.net.InetAddress;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.patchbukkit.world.PatchBukkitWorld;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -547,10 +549,13 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull List<World> getWorlds() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorlds'"
-        );
+        var response = NativeBridgeFfi.getWorlds(patchbukkit.common.EmptyRequest.newBuilder().build());
+        if (response == null) return List.of();
+        List<World> list = new ArrayList<>();
+        for (patchbukkit.common.UUID u : response.getWorldUuidsList()) {
+            list.add(PatchBukkitWorld.getOrCreate(u.getValue()));
+        }
+        return list;
     }
 
     @Override
@@ -587,7 +592,10 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull World getRespawnWorld() {
-        // TODO Auto-generated method stub
+        var worlds = getWorlds();
+        if (!worlds.isEmpty()) {
+            return worlds.get(0);
+        }
         throw new UnsupportedOperationException(
             "Unimplemented method 'getRespawnWorld'"
         );
@@ -603,26 +611,32 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @Nullable World getWorld(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorld'"
-        );
+        for (World world : getWorlds()) {
+            if (world.getName().equalsIgnoreCase(name)) {
+                return world;
+            }
+        }
+        return null;
     }
 
     @Override
     public @Nullable World getWorld(@NotNull UUID uid) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorld'"
-        );
+        for (World world : getWorlds()) {
+            if (world.getUID().equals(uid)) {
+                return world;
+            }
+        }
+        return null;
     }
 
     @Override
     public @Nullable World getWorld(@NotNull Key worldKey) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorld'"
-        );
+        for (World world : getWorlds()) {
+            if (world.getKey().equals(worldKey)) {
+                return world;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -684,6 +698,10 @@ public class PatchBukkitServer implements Server {
         throw new UnsupportedOperationException(
             "Unimplemented method 'reload'"
         );
+    }
+
+    public int getReloadCount() {
+        return 0;
     }
 
     @Override
@@ -1297,10 +1315,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull WarningState getWarningState() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWarningState'"
-        );
+        return WarningState.DEFAULT;
     }
 
     @Override

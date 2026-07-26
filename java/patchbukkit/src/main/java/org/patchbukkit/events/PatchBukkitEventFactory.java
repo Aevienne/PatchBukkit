@@ -46,6 +46,7 @@ public class PatchBukkitEventFactory {
                 LOGGER.warning("EventFactory: Received Event with no data");
                 yield null;
             }
+            default -> null;
         };
     }
 

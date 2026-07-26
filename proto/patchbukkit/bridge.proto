@@ -6,15 +6,28 @@ import "google/protobuf/wrappers.proto";
 import "patchbukkit/abilities.proto";
 import "patchbukkit/common/types.proto";
 import "patchbukkit/config.proto";
+import "patchbukkit/entity.proto";
 import "patchbukkit/events/event.proto";
 import "patchbukkit/log.proto";
 import "patchbukkit/message.proto";
 import "patchbukkit/registry.proto";
 import "patchbukkit/sound.proto";
+import "patchbukkit/world.proto";
 
 service NativeBridge {
   rpc GetAbilities(patchbukkit.common.UUID) returns (patchbukkit.abilities.Abilities);
   rpc SetAbilities(patchbukkit.abilities.SetAbilitiesRequest) returns (patchbukkit.abilities.SetAbilitiesResponse);
+
+  rpc GetEntityHealth(patchbukkit.common.UUID) returns (patchbukkit.entity.EntityHealthResponse);
+  rpc SetEntityHealth(patchbukkit.entity.SetEntityHealthRequest) returns (google.protobuf.Empty);
+  rpc DamageEntity(patchbukkit.entity.DamageEntityRequest) returns (google.protobuf.Empty);
+  rpc SetEntityVelocity(patchbukkit.entity.SetEntityVelocityRequest) returns (google.protobuf.Empty);
+  rpc TeleportEntity(patchbukkit.entity.TeleportEntityRequest) returns (google.protobuf.Empty);
+
+  rpc GetBlockData(patchbukkit.world.GetBlockDataRequest) returns (patchbukkit.world.GetBlockDataResponse);
+  rpc SetBlockData(patchbukkit.world.SetBlockDataRequest) returns (google.protobuf.Empty);
+  rpc SpawnParticle(patchbukkit.world.SpawnParticleRequest) returns (google.protobuf.Empty);
+  rpc GetWorlds(patchbukkit.common.EmptyRequest) returns (patchbukkit.world.GetWorldsResponse);
 
   rpc RegisterEvent(patchbukkit.events.RegisterEventRequest) returns (google.protobuf.Empty);
   rpc CallEvent(patchbukkit.events.CallEventRequest) returns (patchbukkit.events.CallEventResponse);

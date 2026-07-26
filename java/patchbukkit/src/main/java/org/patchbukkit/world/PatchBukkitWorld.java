@@ -6,7 +6,14 @@ import io.papermc.paper.entity.poi.PoiType.Occupancy;
 import io.papermc.paper.math.Position;
 import io.papermc.paper.raytracing.PositionedRayTraceConfigurationBuilder;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import org.bukkit.*;
@@ -27,7 +34,11 @@ import org.bukkit.metadata.MetadataValue;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.*;
-import org.bukkit.util.Vector;
+import org.patchbukkit.bridge.BridgeUtils;
+import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.world.GetBlockDataRequest;
+import patchbukkit.world.SetBlockDataRequest;
+import patchbukkit.world.SpawnParticleRequest;
 import org.checkerframework.checker.index.qual.Positive;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -153,10 +164,7 @@ public class PatchBukkitWorld
 
     @Override
     public @NotNull Block getBlockAt(int x, int y, int z) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBlockAt'"
-        );
+        return new PatchBukkitBlock(this, x, y, z);
     }
 
     @Override
@@ -1585,10 +1593,7 @@ public class PatchBukkitWorld
 
     @Override
     public @NotNull String getName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getName'"
-        );
+        return "world";
     }
 
     @Override

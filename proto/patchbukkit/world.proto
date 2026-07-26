@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package patchbukkit.world;
+
+import "patchbukkit/common/types.proto";
+
+option java_multiple_files = true;
+option java_package = "patchbukkit.world";
+
+message GetBlockDataRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+  int32 x = 2;
+  int32 y = 3;
+  int32 z = 4;
+}
+
+message GetBlockDataResponse {
+  string block_state = 1;
+}
+
+message SetBlockDataRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+  int32 x = 2;
+  int32 y = 3;
+  int32 z = 4;
+  string block_state = 5;
+  bool apply_physics = 6;
+}
+
+message SpawnParticleRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+  string particle = 2;
+  double x = 3;
+  double y = 4;
+  double z = 5;
+  int32 count = 6;
+  double offset_x = 7;
+  double offset_y = 8;
+  double offset_z = 9;
+  double extra = 10;
+}
+
+message GetWorldsResponse {
+  repeated patchbukkit.common.UUID world_uuids = 1;
+}
+

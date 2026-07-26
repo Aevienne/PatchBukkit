@@ -4,6 +4,7 @@ package patchbukkit.events;
 
 import "patchbukkit/common/types.proto";
 import "patchbukkit/events/player_events.proto";
+import "patchbukkit/events/server_events.proto";
 
 option java_multiple_files = true;
 option java_package = "patchbukkit.events";
@@ -11,6 +12,11 @@ option java_package = "patchbukkit.events";
 message Event {
   oneof data {
     PlayerJoinEvent player_join = 1;
+    PluginEnableEvent plugin_enable = 2;
+    PluginDisableEvent plugin_disable = 3;
+    PlayerQuitEvent player_quit = 4;
+    PlayerInteractEvent player_interact = 5;
+    PlayerGameModeChangeEvent player_gamemode_change = 6;
   }
 }
 

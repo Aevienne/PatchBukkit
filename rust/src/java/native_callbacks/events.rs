@@ -84,6 +84,11 @@ pub fn ffi_native_bridge_call_event_impl(request: CallEventRequest) -> Option<Ca
                     context.server.plugin_manager.fire(pumpkin_event).await;
                     Some(true)
                 }
+                Data::PluginEnable(_plugin_enable_event) => todo!(),
+                Data::PluginDisable(_plugin_disable_event) => todo!(),
+                Data::PlayerQuit(_player_quit_event) => todo!(),
+                Data::PlayerInteract(_player_interact_event) => todo!(),
+                Data::PlayerGamemodeChange(_player_game_mode_change_event) => todo!(),
             }
         })
     })?;

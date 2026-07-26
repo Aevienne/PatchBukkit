@@ -1,7 +1,11 @@
 package org.patchbukkit.entity;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -35,7 +39,12 @@ import org.checkerframework.checker.index.qual.NonNegative;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
+import org.patchbukkit.bridge.BridgeUtils;
 import org.patchbukkit.PatchBukkitServer;
+
+import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.entity.DamageEntityRequest;
+import patchbukkit.entity.SetEntityHealthRequest;
 
 import com.destroystokyo.paper.block.TargetBlockInfo;
 import com.destroystokyo.paper.block.TargetBlockInfo.FluidMode;
@@ -55,382 +64,414 @@ public class PatchBukkitLivingEntity
         super(uuid, name);
     }
     @Override
-    public @Nullable AttributeInstance getAttribute(@NotNull Attribute attribute) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAttribute'");
-    }
-
-    @Override
-    public void registerAttribute(@NotNull Attribute attribute) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'registerAttribute'");
-    }
-
-    @Override
-    public void damage(double amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
-
-    @Override
-    public void damage(double amount, @Nullable Entity source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
-
-    @Override
-    public void damage(double amount, @NotNull DamageSource damageSource) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
-
-    @Override
-    public double getHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getHealth'");
-    }
-
-    @Override
-    public void setHealth(double health) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setHealth'");
-    }
-
-    @Override
-    public void heal(double amount, @NotNull RegainReason reason) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'heal'");
-    }
-
-    @Override
-    public double getAbsorptionAmount() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAbsorptionAmount'");
-    }
-
-    @Override
-    public void setAbsorptionAmount(double amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setAbsorptionAmount'");
-    }
-
-    @Override
-    public double getMaxHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMaxHealth'");
-    }
-
-    @Override
-    public void setMaxHealth(double health) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setMaxHealth'");
-    }
-
-    @Override
-    public void resetMaxHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetMaxHealth'");
-    }
-
-    @Override
-    public <T extends Projectile> @NotNull T launchProjectile(@NotNull Class<? extends T> projectile,
-            @Nullable Vector velocity, @Nullable Consumer<? super T> function) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'launchProjectile'");
-    }
-
-    @Override
-    public TriState getFrictionState() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getFrictionState'");
-    }
-
-    @Override
-    public void setFrictionState(TriState state) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setFrictionState'");
-    }
-
-    @Override
     public double getEyeHeight() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeHeight'");
+        return 1.62;
     }
 
     @Override
     public double getEyeHeight(boolean ignorePose) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeHeight'");
+        return 1.62;
     }
 
     @Override
     public @NotNull Location getEyeLocation() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeLocation'");
-    }
-
-    @Override
-    public @NotNull List<Block> getLineOfSight(@Nullable Set<Material> transparent, int maxDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLineOfSight'");
-    }
-
-    @Override
-    public @NotNull Block getTargetBlock(@Nullable Set<Material> transparent, int maxDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlock'");
-    }
-
-    @Override
-    public @Nullable Block getTargetBlock(int maxDistance, @NotNull FluidMode fluidMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlock'");
-    }
-
-    @Override
-    public @Nullable BlockFace getTargetBlockFace(int maxDistance, @NotNull FluidMode fluidMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlockFace'");
-    }
-
-    @Override
-    public @Nullable BlockFace getTargetBlockFace(int maxDistance, @NotNull FluidCollisionMode fluidMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlockFace'");
-    }
-
-    @Override
-    public @Nullable TargetBlockInfo getTargetBlockInfo(int maxDistance, @NotNull FluidMode fluidMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlockInfo'");
-    }
-
-    @Override
-    public @Nullable Entity getTargetEntity(int maxDistance, boolean ignoreBlocks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetEntity'");
-    }
-
-    @Override
-    public @Nullable TargetEntityInfo getTargetEntityInfo(int maxDistance, boolean ignoreBlocks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetEntityInfo'");
-    }
-
-    @Override
-    public @Nullable RayTraceResult rayTraceEntities(int maxDistance, boolean ignoreBlocks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'rayTraceEntities'");
-    }
-
-    @Override
-    public @NotNull List<Block> getLastTwoTargetBlocks(@Nullable Set<Material> transparent, int maxDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastTwoTargetBlocks'");
-    }
-
-    @Override
-    public @Nullable Block getTargetBlockExact(int maxDistance, @NotNull FluidCollisionMode fluidCollisionMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTargetBlockExact'");
+        return getLocation().add(0, getEyeHeight(), 0);
     }
 
     @Override
     public @Nullable RayTraceResult rayTraceBlocks(double maxDistance, @NotNull FluidCollisionMode fluidCollisionMode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'rayTraceBlocks'");
+        return getLocation().getWorld().rayTraceBlocks(getEyeLocation(), getEyeLocation().getDirection(), maxDistance, fluidCollisionMode);
     }
 
     @Override
-    public int getRemainingAir() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getRemainingAir'");
+    public @Nullable Block getTargetBlockExact(int maxDistance, @NotNull FluidCollisionMode fluidCollisionMode) {
+        RayTraceResult result = rayTraceBlocks(maxDistance, fluidCollisionMode);
+        return result != null ? result.getHitBlock() : null;
     }
 
     @Override
-    public void setRemainingAir(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setRemainingAir'");
+    public @NotNull Block getTargetBlock(@Nullable Set<Material> transparent, int maxDistance) {
+        Block hit = getTargetBlockExact(maxDistance, FluidCollisionMode.NEVER);
+        return hit != null ? hit : getLocation().getBlock();
     }
 
     @Override
-    public int getMaximumAir() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMaximumAir'");
+    public @NotNull List<Block> getLineOfSight(@Nullable Set<Material> transparent, int maxDistance) {
+        List<Block> blocks = new ArrayList<>();
+        Block target = getTargetBlock(transparent, maxDistance);
+        if (target != null) {
+            blocks.add(target);
+        }
+        return blocks;
     }
 
     @Override
-    public void setMaximumAir(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setMaximumAir'");
+    public @Nullable Block getTargetBlock(int maxDistance, @NotNull FluidMode fluidMode) {
+        return getTargetBlock(null, maxDistance);
     }
 
     @Override
-    public @Nullable ItemStack getItemInUse() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getItemInUse'");
+    public @NotNull List<Block> getLastTwoTargetBlocks(@Nullable Set<Material> transparent, int maxDistance) {
+        Block target = getTargetBlock(transparent, maxDistance);
+        return List.of(target, target);
     }
 
     @Override
-    public int getItemInUseTicks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getItemInUseTicks'");
+    public @Nullable Entity getTargetEntity(int maxDistance, boolean ignoreBlocks) {
+        RayTraceResult result = rayTraceEntities(maxDistance, ignoreBlocks);
+        return result != null ? result.getHitEntity() : null;
     }
 
     @Override
-    public void setItemInUseTicks(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setItemInUseTicks'");
+    public @Nullable TargetEntityInfo getTargetEntityInfo(int maxDistance, boolean ignoreBlocks) {
+        Entity entity = getTargetEntity(maxDistance, ignoreBlocks);
+        return entity != null ? new TargetEntityInfo(entity, entity.getLocation().toVector().subtract(getEyeLocation().toVector())) : null;
     }
 
     @Override
-    public @NonNegative int getArrowCooldown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getArrowCooldown'");
+    public @Nullable TargetBlockInfo getTargetBlockInfo(int maxDistance, @NotNull FluidMode fluidMode) {
+        Block block = getTargetBlockExact(maxDistance, FluidCollisionMode.NEVER);
+        return block != null ? new TargetBlockInfo(block, BlockFace.UP) : null;
     }
 
     @Override
-    public void setArrowCooldown(@NonNegative int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setArrowCooldown'");
+    public @Nullable BlockFace getTargetBlockFace(int maxDistance, @NotNull FluidCollisionMode fluidCollisionMode) {
+        RayTraceResult result = rayTraceBlocks(maxDistance, fluidCollisionMode);
+        return result != null ? result.getHitBlockFace() : null;
     }
 
     @Override
-    public @NonNegative int getArrowsInBody() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getArrowsInBody'");
+    public @Nullable BlockFace getTargetBlockFace(int maxDistance, @NotNull FluidMode fluidMode) {
+        return getTargetBlockFace(maxDistance, FluidCollisionMode.NEVER);
     }
 
     @Override
-    public void setArrowsInBody(@NonNegative int count, boolean fireEvent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setArrowsInBody'");
+    public @Nullable RayTraceResult rayTraceEntities(int maxDistance, boolean ignoreBlocks) {
+        return getLocation().getWorld().rayTraceEntities(getEyeLocation(), getEyeLocation().getDirection(), (double) maxDistance, (double) maxDistance);
+    }
+    private TriState frictionState = TriState.NOT_SET;
+
+    @Override
+    public TriState getFrictionState() {
+        return this.frictionState;
     }
 
     @Override
-    public @NonNegative int getBeeStingerCooldown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getBeeStingerCooldown'");
+    public void setFrictionState(TriState state) {
+        this.frictionState = state != null ? state : TriState.NOT_SET;
+    }
+
+    private final Map<Attribute, AttributeInstance> attributes = new HashMap<>();
+
+    @Override
+    public @Nullable AttributeInstance getAttribute(@NotNull Attribute attribute) {
+        return attributes.get(attribute);
     }
 
     @Override
-    public void setBeeStingerCooldown(@NonNegative int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setBeeStingerCooldown'");
+    public void registerAttribute(@NotNull Attribute attribute) {
     }
 
     @Override
-    public @NonNegative int getBeeStingersInBody() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getBeeStingersInBody'");
+    public <T extends Projectile> @NotNull T launchProjectile(@NotNull Class<? extends T> projectileClass) {
+        return launchProjectile(projectileClass, null);
     }
 
     @Override
-    public void setBeeStingersInBody(@NonNegative int count) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setBeeStingersInBody'");
+    public <T extends Projectile> @NotNull T launchProjectile(@NotNull Class<? extends T> projectileClass, @Nullable Vector velocity) {
+        return launchProjectile(projectileClass, velocity, null);
     }
 
     @Override
-    public int getMaximumNoDamageTicks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMaximumNoDamageTicks'");
+    public <T extends Projectile> @NotNull T launchProjectile(@NotNull Class<? extends T> projectileClass, @Nullable Vector velocity, @Nullable Consumer<? super T> function) {
+        Location spawnLoc = getEyeLocation();
+        Vector dir = velocity != null ? velocity : spawnLoc.getDirection();
+        T entity = spawnLoc.getWorld().spawn(spawnLoc, projectileClass, function);
+        entity.setVelocity(dir);
+        entity.setShooter(this);
+        return entity;
     }
 
-    @Override
-    public void setMaximumNoDamageTicks(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setMaximumNoDamageTicks'");
-    }
 
-    @Override
-    public double getLastDamage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastDamage'");
-    }
 
-    @Override
-    public void setLastDamage(double damage) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setLastDamage'");
-    }
-
-    @Override
-    public int getNoDamageTicks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getNoDamageTicks'");
-    }
-
-    @Override
-    public void setNoDamageTicks(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setNoDamageTicks'");
-    }
-
-    @Override
-    public int getNoActionTicks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getNoActionTicks'");
-    }
-
-    @Override
-    public void setNoActionTicks(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setNoActionTicks'");
-    }
+    private Player killer;
 
     @Override
     public @Nullable Player getKiller() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getKiller'");
+        return this.killer;
     }
 
     @Override
     public void setKiller(@Nullable Player killer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setKiller'");
+        this.killer = killer;
+    }
+
+    private double health = 20.0;
+    private double maxHealth = 20.0;
+    private double absorption = 0.0;
+    private int arrowsInBody = 0;
+    private int arrowCooldown = 0;
+    private int beeStingersInBody = 0;
+    private int beeStingerCooldown = 0;
+
+    @Override
+    public int getArrowsInBody() {
+        return this.arrowsInBody;
+    }
+
+    @Override
+    public void setArrowsInBody(int count) {
+        this.arrowsInBody = count;
+    }
+
+    @Override
+    public void setArrowsInBody(int count, boolean fireEvent) {
+        this.arrowsInBody = count;
+    }
+
+    @Override
+    public int getArrowCooldown() {
+        return this.arrowCooldown;
+    }
+
+    @Override
+    public void setArrowCooldown(int ticks) {
+        this.arrowCooldown = ticks;
+    }
+
+    @Override
+    public int getBeeStingersInBody() {
+        return this.beeStingersInBody;
+    }
+
+    @Override
+    public void setBeeStingersInBody(int count) {
+        this.beeStingersInBody = count;
+    }
+
+    @Override
+    public int getBeeStingerCooldown() {
+        return this.beeStingerCooldown;
+    }
+
+    @Override
+    public void setBeeStingerCooldown(int ticks) {
+        this.beeStingerCooldown = ticks;
+    }
+
+    private int noActionTicks = 0;
+
+    @Override
+    public int getNoActionTicks() {
+        return this.noActionTicks;
+    }
+
+    @Override
+    public void setNoActionTicks(int ticks) {
+        this.noActionTicks = ticks;
+    }
+
+    private int itemInUseTicks = 0;
+    private ItemStack itemInUse = null;
+
+    @Override
+    public @Nullable ItemStack getItemInUse() {
+        return this.itemInUse;
+    }
+
+    @Override
+    public int getItemInUseTicks() {
+        return this.itemInUseTicks;
+    }
+
+    @Override
+    public void setItemInUseTicks(int ticks) {
+        this.itemInUseTicks = ticks;
+    }
+
+    private int remainingAir = 300;
+    private int maximumAir = 300;
+    private int noDamageTicks = 0;
+    private int maximumNoDamageTicks = 20;
+    private double lastDamage = 0.0;
+    private final Map<PotionEffectType, PotionEffect> potionEffects = new HashMap<>();
+
+    @Override
+    public double getHealth() {
+        try {
+            var response = NativeBridgeFfi.getEntityHealth(BridgeUtils.convertUuid(this.getUniqueId()));
+            if (response != null) {
+                return response.getHealth();
+            }
+        } catch (Throwable ignored) {}
+        return this.health;
+    }
+
+    @Override
+    public void setHealth(double health) {
+        this.health = Math.max(0.0, Math.min(health, getMaxHealth()));
+        var request = SetEntityHealthRequest.newBuilder()
+            .setUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+            .setHealth(this.health)
+            .build();
+        NativeBridgeFfi.setEntityHealth(request);
+    }
+
+    @Override
+    public void damage(double amount) {
+        var request = DamageEntityRequest.newBuilder()
+            .setUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+            .setAmount(amount)
+            .build();
+        NativeBridgeFfi.damageEntity(request);
+    }
+
+    @Override
+    public void damage(double amount, @Nullable Entity source) {
+        setHealth(getHealth() - amount);
+    }
+
+    @Override
+    public void damage(double amount, @NotNull DamageSource damageSource) {
+        setHealth(getHealth() - amount);
+    }
+
+    @Override
+    public void heal(double amount, @NotNull RegainReason reason) {
+        setHealth(getHealth() + amount);
+    }
+
+    @Override
+    public double getMaxHealth() {
+        return this.maxHealth;
+    }
+
+    @Override
+    public void setMaxHealth(double health) {
+        this.maxHealth = Math.max(0.1, health);
+        if (this.health > this.maxHealth) {
+            this.health = this.maxHealth;
+        }
+    }
+
+    @Override
+    public void resetMaxHealth() {
+        setMaxHealth(20.0);
+    }
+
+    @Override
+    public double getAbsorptionAmount() {
+        return this.absorption;
+    }
+
+    @Override
+    public void setAbsorptionAmount(double amount) {
+        this.absorption = Math.max(0.0, amount);
+    }
+
+    @Override
+    public int getRemainingAir() {
+        return this.remainingAir;
+    }
+
+    @Override
+    public void setRemainingAir(int ticks) {
+        this.remainingAir = ticks;
+    }
+
+    @Override
+    public int getMaximumAir() {
+        return this.maximumAir;
+    }
+
+    @Override
+    public void setMaximumAir(int ticks) {
+        this.maximumAir = ticks;
+    }
+
+    @Override
+    public int getNoDamageTicks() {
+        return this.noDamageTicks;
+    }
+
+    @Override
+    public void setNoDamageTicks(int ticks) {
+        this.noDamageTicks = ticks;
+    }
+
+    @Override
+    public int getMaximumNoDamageTicks() {
+        return this.maximumNoDamageTicks;
+    }
+
+    @Override
+    public void setMaximumNoDamageTicks(int ticks) {
+        this.maximumNoDamageTicks = ticks;
+    }
+
+    @Override
+    public double getLastDamage() {
+        return this.lastDamage;
+    }
+
+    @Override
+    public void setLastDamage(double damage) {
+        this.lastDamage = damage;
+    }
+
+    @Override
+    public boolean addPotionEffect(@NotNull PotionEffect effect) {
+        return addPotionEffect(effect, false);
     }
 
     @Override
     public boolean addPotionEffect(@NotNull PotionEffect effect, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addPotionEffect'");
+        PotionEffectType type = effect.getType();
+        PotionEffect existing = potionEffects.get(type);
+        if (existing == null || force || effect.getAmplifier() > existing.getAmplifier()
+                || (effect.getAmplifier() == existing.getAmplifier() && effect.getDuration() > existing.getDuration())) {
+            potionEffects.put(type, effect);
+            return true;
+        }
+        return false;
     }
 
     @Override
     public boolean addPotionEffects(@NotNull Collection<PotionEffect> effects) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addPotionEffects'");
+        boolean success = false;
+        for (PotionEffect effect : effects) {
+            if (addPotionEffect(effect)) {
+                success = true;
+            }
+        }
+        return success;
     }
 
     @Override
     public boolean hasPotionEffect(@NotNull PotionEffectType type) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasPotionEffect'");
+        return potionEffects.containsKey(type);
     }
 
     @Override
     public @Nullable PotionEffect getPotionEffect(@NotNull PotionEffectType type) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPotionEffect'");
+        return potionEffects.get(type);
     }
 
     @Override
     public void removePotionEffect(@NotNull PotionEffectType type) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removePotionEffect'");
+        potionEffects.remove(type);
     }
 
     @Override
     public @NotNull Collection<PotionEffect> getActivePotionEffects() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getActivePotionEffects'");
+        return Collections.unmodifiableCollection(potionEffects.values());
     }
 
     @Override
     public boolean clearActivePotionEffects() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'clearActivePotionEffects'");
+        boolean hadEffects = !potionEffects.isEmpty();
+        potionEffects.clear();
+        return hadEffects;
     }
 
     @Override
@@ -844,11 +885,6 @@ public class PatchBukkitLivingEntity
     public void kill(DamageSource damageSource) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'kill'");
-    }
-    @Override
-    public boolean addPotionEffect(@NotNull PotionEffect effect) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addPotionEffect'");
     }
     @Override
     public float getSoundVolume() {

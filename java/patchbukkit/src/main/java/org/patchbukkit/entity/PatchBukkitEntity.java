@@ -1,8 +1,12 @@
 package org.patchbukkit.entity;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -50,13 +54,23 @@ import net.kyori.adventure.sound.Sound.Source;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.util.TriState;
 import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.entity.SetEntityVelocityRequest;
+import patchbukkit.entity.TeleportEntityRequest;
 
 public class PatchBukkitEntity implements Entity {
 
     protected final UUID uuid;
-    private final String name;
-    private static PermissibleBase perm;
+    protected final String name;
+    private PermissibleBase perm;
     private boolean visibleByDefault = true;
+    private final Map<String, List<MetadataValue>> metadataMap = new HashMap<>();
+
+    private PermissibleBase getPermissible() {
+        if (this.perm == null) {
+            this.perm = new PermissibleBase(this);
+        }
+        return this.perm;
+    }
 
     public PatchBukkitEntity(
         UUID uuid,
@@ -66,66 +80,52 @@ public class PatchBukkitEntity implements Entity {
         this.name = name;
     }
 
-    private static PermissibleBase getPermissibleBase() {
-        if (PatchBukkitEntity.perm == null) {
-            PatchBukkitEntity.perm = new PermissibleBase(new ServerOperator() {
-
-                @Override
-                public boolean isOp() {
-                    return false;
-                }
-
-                @Override
-                public void setOp(boolean value) {
-
-                }
-            });
-        }
-        return PatchBukkitEntity.perm;
-    }
-
     @Override
     public void setMetadata(@NotNull String metadataKey, @NotNull MetadataValue newMetadataValue) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setMetadata'");
+        List<MetadataValue> list = metadataMap.computeIfAbsent(metadataKey, k -> new ArrayList<>());
+        list.removeIf(v -> v.getOwningPlugin() == newMetadataValue.getOwningPlugin());
+        list.add(newMetadataValue);
     }
 
     @Override
     public @NotNull List<MetadataValue> getMetadata(@NotNull String metadataKey) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMetadata'");
+        List<MetadataValue> list = metadataMap.get(metadataKey);
+        return list != null ? Collections.unmodifiableList(new ArrayList<>(list)) : Collections.emptyList();
     }
 
     @Override
     public boolean hasMetadata(@NotNull String metadataKey) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasMetadata'");
+        List<MetadataValue> list = metadataMap.get(metadataKey);
+        return list != null && !list.isEmpty();
     }
 
     @Override
     public void removeMetadata(@NotNull String metadataKey, @NotNull Plugin owningPlugin) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeMetadata'");
+        List<MetadataValue> list = metadataMap.get(metadataKey);
+        if (list != null) {
+            list.removeIf(v -> v.getOwningPlugin() == owningPlugin);
+            if (list.isEmpty()) {
+                metadataMap.remove(metadataKey);
+            }
+        }
     }
 
     @Override
     public void sendMessage(String message) {
-
     }
 
     @Override
     public void sendMessage(String... messages) {
-
     }
 
     @Override
     public void sendMessage(UUID sender, String message) {
-        this.sendMessage(message); // Most entities don't know about senders
+        this.sendMessage(message);
     }
 
     @Override
     public void sendMessage(UUID sender, String... messages) {
-        this.sendMessage(messages); // Most entities don't know about senders
+        this.sendMessage(messages);
     }
 
     @Override
@@ -135,83 +135,72 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull Component name() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'name'");
+        return Component.text(this.name);
     }
 
     @Override
     public boolean isPermissionSet(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isPermissionSet'");
+        return getPermissible().isPermissionSet(name);
     }
 
     @Override
     public boolean isPermissionSet(@NotNull Permission perm) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isPermissionSet'");
+        return getPermissible().isPermissionSet(perm);
     }
 
     @Override
     public boolean hasPermission(String name) {
-        return PatchBukkitEntity.getPermissibleBase().hasPermission(name);
+        return getPermissible().hasPermission(name);
     }
 
     @Override
     public boolean hasPermission(Permission perm) {
-        return PatchBukkitEntity.getPermissibleBase().hasPermission(perm);
+        return getPermissible().hasPermission(perm);
     }
 
     @Override
     public @NotNull PermissionAttachment addAttachment(@NotNull Plugin plugin, @NotNull String name, boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return getPermissible().addAttachment(plugin, name, value);
     }
 
     @Override
     public @NotNull PermissionAttachment addAttachment(@NotNull Plugin plugin) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return getPermissible().addAttachment(plugin);
     }
 
     @Override
-    public @Nullable PermissionAttachment addAttachment(@NotNull Plugin plugin, @NotNull String name, boolean value,
-            int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+    public @Nullable PermissionAttachment addAttachment(@NotNull Plugin plugin, @NotNull String name, boolean value, int ticks) {
+        return getPermissible().addAttachment(plugin, name, value, ticks);
     }
 
     @Override
     public @Nullable PermissionAttachment addAttachment(@NotNull Plugin plugin, int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return getPermissible().addAttachment(plugin, ticks);
     }
 
     @Override
     public void removeAttachment(@NotNull PermissionAttachment attachment) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeAttachment'");
+        getPermissible().removeAttachment(attachment);
     }
 
     @Override
     public void recalculatePermissions() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'recalculatePermissions'");
+        getPermissible().recalculatePermissions();
     }
 
     @Override
     public @NotNull Set<PermissionAttachmentInfo> getEffectivePermissions() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEffectivePermissions'");
+        return getPermissible().getEffectivePermissions();
     }
 
     @Override
     public boolean isOp() {
-        return PatchBukkitEntity.getPermissibleBase().isOp();
+        return getPermissible().isOp();
     }
 
     @Override
     public void setOp(boolean value) {
-        PatchBukkitEntity.getPermissibleBase().setOp(value);
+        getPermissible().setOp(value);
     }
 
     @Override
@@ -282,16 +271,38 @@ public class PatchBukkitEntity implements Entity {
         return newLoc;
     }
 
+    private Vector velocity = new Vector(0, 0, 0);
+
     @Override
     public void setVelocity(@NotNull Vector velocity) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setVelocity'");
+        this.velocity = velocity.clone();
+        var request = SetEntityVelocityRequest.newBuilder()
+            .setUuid(BridgeUtils.convertUuid(this.uuid))
+            .setX(velocity.getX())
+            .setY(velocity.getY())
+            .setZ(velocity.getZ())
+            .build();
+        NativeBridgeFfi.setEntityVelocity(request);
     }
 
     @Override
     public @NotNull Vector getVelocity() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getVelocity'");
+        return this.velocity.clone();
+    }
+
+    @Override
+    public boolean teleport(@NotNull Location location) {
+        var request = TeleportEntityRequest.newBuilder()
+            .setUuid(BridgeUtils.convertUuid(this.uuid))
+            .setLocation(BridgeUtils.convertLocation(location))
+            .build();
+        NativeBridgeFfi.teleportEntity(request);
+        return true;
+    }
+
+    @Override
+    public boolean teleport(@NotNull Location location, @NotNull TeleportCause cause) {
+        return teleport(location);
     }
 
     @Override
@@ -332,33 +343,26 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public void setRotation(float yaw, float pitch) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setRotation'");
+        Location loc = getLocation();
+        teleport(new Location(loc.getWorld(), loc.getX(), loc.getY(), loc.getZ(), yaw, pitch));
+    }
+
+    @Override
+    public void lookAt(double x, double y, double z, @NotNull LookAnchor entityAnchor) {
+        Location loc = getLocation();
+        double dx = x - loc.getX();
+        double dy = y - loc.getY();
+        double dz = z - loc.getZ();
+        double r = Math.sqrt(dx * dx + dz * dz);
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) Math.toDegrees(Math.atan2(-dy, r));
+        teleport(new Location(loc.getWorld(), loc.getX(), loc.getY(), loc.getZ(), yaw, pitch));
     }
 
     @Override
     public boolean teleport(@NotNull Location location, @NotNull TeleportCause cause,
             @NotNull TeleportFlag @NotNull... teleportFlags) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'teleport'");
-    }
-
-    @Override
-    public void lookAt(double x, double y, double z, @NotNull LookAnchor entityAnchor) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'lookAt'");
-    }
-
-    @Override
-    public boolean teleport(@NotNull Location location) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'teleport'");
-    }
-
-    @Override
-    public boolean teleport(@NotNull Location location, @NotNull TeleportCause cause) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'teleport'");
+        return teleport(location, cause);
     }
 
     @Override

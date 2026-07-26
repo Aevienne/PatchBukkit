@@ -145,7 +145,11 @@ pub struct SpigotPluginYml {
     #[serde(default)]
     pub default_permission: Option<DefaultPermission>,
 
-    // Paper-specific fields
+    // Paper/Folia-specific fields
+    /// Folia region threading support flag
+    #[serde(rename = "folia-supported")]
+    #[serde(default)]
+    pub folia_supported: Option<bool>,
     /// Paper plugin loader class
     #[serde(rename = "paper-plugin-loader")]
     #[serde(default)]

@@ -107,12 +107,16 @@ pub unsafe extern "C" fn {fn_name}(
 ) -> *mut u8 {{
     use prost::Message;
     tracing::debug!("{fn_name}: called with input_ptr={{:?}}, input_len={{}}", input_ptr, input_len);
-    if input_ptr.is_null() || input_len == 0 {{
-        tracing::warn!("{fn_name}: null or empty input (ptr={{:?}}, len={{}})", input_ptr, input_len);
+    if input_ptr.is_null() {{
+        tracing::warn!("{fn_name}: null input (ptr={{:?}}, len={{}})", input_ptr, input_len);
         unsafe {{ *output_len = 0 }};
         return std::ptr::null_mut();
     }}
-    let input_slice = unsafe {{ std::slice::from_raw_parts(input_ptr, input_len) }};
+    let input_slice = if input_len == 0 {{
+        &[]
+    }} else {{
+        unsafe {{ std::slice::from_raw_parts(input_ptr, input_len) }}
+    }};
     let Ok(request) = {input_type}::decode(input_slice) else {{
         tracing::warn!("{fn_name}: failed to decode request");
         unsafe {{ *output_len = 0 }};

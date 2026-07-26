@@ -36,6 +36,12 @@ pub use log::*;
 pub mod config;
 pub use config::*;
 
+pub mod entity;
+pub use entity::*;
+
+pub mod world;
+pub use world::*;
+
 pub mod itemstack;
 
 static CALLBACK_CONTEXT: OnceLock<CallbackContext> = OnceLock::new();

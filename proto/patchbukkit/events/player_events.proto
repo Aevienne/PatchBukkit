@@ -10,3 +10,24 @@ message PlayerJoinEvent {
   patchbukkit.common.UUID player_uuid = 1;
   string join_message = 2;
 }
+
+message PlayerQuitEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  string quit_message = 2;
+}
+
+message PlayerInteractEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  string action = 2;
+  int32 clicked_x = 3;
+  int32 clicked_y = 4;
+  int32 clicked_z = 5;
+  string block_face = 6;
+  string hand = 7;
+}
+
+message PlayerGameModeChangeEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  string new_gamemode = 2;
+}
+

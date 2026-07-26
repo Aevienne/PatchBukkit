@@ -38,6 +38,14 @@ pub mod patchbukkit {
     pub mod itemstack {
         include!(concat!(env!("OUT_DIR"), "/patchbukkit.itemstack.rs"));
     }
+
+    pub mod entity {
+        include!(concat!(env!("OUT_DIR"), "/patchbukkit.entity.rs"));
+    }
+
+    pub mod world {
+        include!(concat!(env!("OUT_DIR"), "/patchbukkit.world.rs"));
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/ffi_init.rs"));

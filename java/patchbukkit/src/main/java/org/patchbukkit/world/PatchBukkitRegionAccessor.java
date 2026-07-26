@@ -21,6 +21,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jspecify.annotations.NonNull;
+import org.patchbukkit.bridge.BridgeUtils;
+import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.world.GetBlockDataRequest;
+import patchbukkit.world.SetBlockDataRequest;
 
 public class PatchBukkitRegionAccessor implements RegionAccessor {
 
@@ -65,32 +69,42 @@ public class PatchBukkitRegionAccessor implements RegionAccessor {
     }
 
     @Override
-    public @NotNull BlockData getBlockData(int x, int y, int z) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBlockData'"
-        );
+    public @org.jetbrains.annotations.NotNull BlockData getBlockData(int x, int y, int z) {
+        if (this instanceof PatchBukkitWorld world) {
+            var request = GetBlockDataRequest.newBuilder()
+                .setWorldUuid(BridgeUtils.convertUuid(world.getUID()))
+                .setX(x)
+                .setY(y)
+                .setZ(z)
+                .build();
+            try {
+                var response = NativeBridgeFfi.getBlockData(request);
+                if (response != null && !response.getBlockState().isEmpty()) {
+                    return Bukkit.createBlockData(Material.STONE);
+                }
+            } catch (Throwable ignored) {}
+        }
+        return Bukkit.createBlockData(Material.AIR);
     }
 
     @Override
-    public @NotNull Material getType(int x, int y, int z) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getType'"
-        );
+    public @org.jetbrains.annotations.NotNull Material getType(int x, int y, int z) {
+        return getBlockData(x, y, z).getMaterial();
     }
 
     @Override
-    public void setBlockData(
-        int x,
-        int y,
-        int z,
-        @NotNull BlockData blockData
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setBlockData'"
-        );
+    public void setBlockData(int x, int y, int z, @org.jetbrains.annotations.NotNull BlockData blockData) {
+        if (this instanceof PatchBukkitWorld world) {
+            var request = SetBlockDataRequest.newBuilder()
+                .setWorldUuid(BridgeUtils.convertUuid(world.getUID()))
+                .setX(x)
+                .setY(y)
+                .setZ(z)
+                .setBlockState(blockData.getAsString())
+                .setApplyPhysics(true)
+                .build();
+            NativeBridgeFfi.setBlockData(request);
+        }
     }
 
     @Override
