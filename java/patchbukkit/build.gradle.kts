@@ -64,9 +64,10 @@ java {
 }
 
 tasks.withType<JavaCompile> {
+    options.isWarnings = false
     options.compilerArgs.addAll(listOf(
-        "-Xlint:-removal",
-        "-Xlint:-deprecation"
+        "-Xlint:none",
+        "-nowarn"
     ))
 }
 

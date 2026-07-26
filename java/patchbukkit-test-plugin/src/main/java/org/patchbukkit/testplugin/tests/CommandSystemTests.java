@@ -60,8 +60,8 @@ public final class CommandSystemTests {
         map.register("patchbukkittest", testCmd);
 
         CommandSender sender = Bukkit.getConsoleSender();
-        boolean result = map.dispatch(sender, "pbtestexec");
-        assertTrue(result, "dispatch() should return true");
+        boolean result = map.dispatch(sender, "/pbtestexec");
+        assertTrue(result, "dispatch() with leading slash should return true");
         assertTrue(executed[0], "command should have been executed");
     }
 

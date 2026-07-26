@@ -169,9 +169,32 @@ impl CommandManager {
             &[InvocationArg::try_from(&cmd_name)?, j_plugin_arg],
         )?));
         tracing::info!("Registering Bukkit command: {}", &cmd_name);
+        let cmd_aliases: Vec<String> = cmd_data.aliases.as_ref().map_or_else(Vec::new, |a| a.to_vec());
+        let mut names: Vec<String> = vec![cmd_name.clone()];
+        names.extend(cmd_aliases.clone());
+
         {
             let cmd_lock = j_plugin_cmd.lock().unwrap();
             let j_plugin_cmd_owned = jvm.clone_instance(&cmd_lock)?;
+
+            if let Some(ref desc) = cmd_data.description {
+                let _ = jvm.invoke(&j_plugin_cmd_owned, "setDescription", &[InvocationArg::try_from(desc)?]);
+            }
+            if let Some(ref usage) = cmd_data.usage {
+                let _ = jvm.invoke(&j_plugin_cmd_owned, "setUsage", &[InvocationArg::try_from(usage)?]);
+            }
+            if let Some(ref perm_msg) = cmd_data.permission_message {
+                let _ = jvm.invoke(&j_plugin_cmd_owned, "setPermissionMessage", &[InvocationArg::try_from(perm_msg)?]);
+            }
+            if let Some(ref perm) = cmd_data.permission {
+                let _ = jvm.invoke(&j_plugin_cmd_owned, "setPermission", &[InvocationArg::try_from(perm)?]);
+            }
+            if !cmd_aliases.is_empty() {
+                let j_aliases = jvm.create_java_array("java.lang.String", &cmd_aliases.iter().map(|a| InvocationArg::try_from(a).unwrap()).collect::<Vec<_>>())?;
+                let j_list = jvm.invoke_static("java.util.Arrays", "asList", &[InvocationArg::from(j_aliases)])?;
+                let _ = jvm.invoke(&j_plugin_cmd_owned, "setAliases", &[InvocationArg::from(j_list)]);
+            }
+
             jvm.invoke(
                 command_map,
                 "register",
@@ -186,7 +209,7 @@ impl CommandManager {
         let node = init_java_command(
             cmd_name.clone(),
             command_tx.clone(),
-            [&cmd_name],
+            names,
             cmd_data.description.clone().unwrap_or_default(),
         );
 

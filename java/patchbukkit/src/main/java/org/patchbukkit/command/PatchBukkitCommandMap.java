@@ -61,7 +61,7 @@ public class PatchBukkitCommandMap implements CommandMap {
     public boolean dispatch(@NotNull CommandSender sender, @NotNull String cmdLine) throws CommandException {
         if (cmdLine == null) return false;
         String cleanLine = cmdLine.trim();
-        if (cleanLine.startsWith("/")) {
+        while (cleanLine.startsWith("/")) {
             cleanLine = cleanLine.substring(1).trim();
         }
         if (cleanLine.isEmpty()) return false;
@@ -79,7 +79,6 @@ public class PatchBukkitCommandMap implements CommandMap {
         try {
             // Extract arguments (everything after the label)
             String[] args = Arrays.copyOfRange(split, 1, split.length);
-            // This triggers the PluginCommand.execute() method you implemented earlier
             return command.execute(sender, sentLabel, args);
         } catch (Exception ex) {
             throw new CommandException("Unhandled exception executing '" + cmdLine + "'", ex);
@@ -108,7 +107,12 @@ public class PatchBukkitCommandMap implements CommandMap {
 
     @Override
     public @Nullable List<String> tabComplete(@NotNull CommandSender sender, @NotNull String cmdLine, @Nullable Location location) {
-        String[] split = cmdLine.split(" ", -1);
+        if (cmdLine == null) return new ArrayList<>();
+        String cleanLine = cmdLine.trim();
+        while (cleanLine.startsWith("/")) {
+            cleanLine = cleanLine.substring(1).trim();
+        }
+        String[] split = cleanLine.split(" ", -1);
         if (split.length == 0) return new ArrayList<>();
 
         String label = split[0].toLowerCase();

@@ -29,4 +29,18 @@ public final class EntityTests {
         Bukkit.getServer().getEntity(UUID.randomUUID());
     }
 
+    @ConformanceTest(name = "Player flight state and speed getters run cleanly", category = TestCategory.ENTITY)
+    public void testPlayerFlightState() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            boolean allow = p.getAllowFlight();
+            boolean flying = p.isFlying();
+            float flySpeed = p.getFlySpeed();
+            float walkSpeed = p.getWalkSpeed();
+            assertNotNull(allow, "Player.getAllowFlight()");
+            assertNotNull(flying, "Player.isFlying()");
+            assertTrue(flySpeed >= -1.0f && flySpeed <= 1.0f, "Fly speed in valid range");
+            assertTrue(walkSpeed >= -1.0f && walkSpeed <= 1.0f, "Walk speed in valid range");
+        }
+    }
+
 }

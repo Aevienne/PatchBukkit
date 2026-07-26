@@ -62,4 +62,20 @@ public final class PluginManagerTests {
         assertNotNull(perms, "PluginManager.getPermissions()");
     }
 
+    @ConformanceTest(name = "PluginManager.useTimings() returns boolean", category = TestCategory.PLUGIN_MANAGER)
+    public void testUseTimings() {
+        boolean timings = Bukkit.getPluginManager().useTimings();
+        assertTrue(!timings, "useTimings() should return false");
+    }
+
+    @ConformanceTest(name = "Server.getMessenger() returns non-null", category = TestCategory.PLUGIN_MANAGER)
+    public void testMessenger() {
+        var messenger = Bukkit.getMessenger();
+        assertNotNull(messenger, "Bukkit.getMessenger()");
+        messenger.registerOutgoingPluginChannel(plugin, "BungeeCord");
+        assertTrue(messenger.isOutgoingChannelRegistered(plugin, "BungeeCord"), "isOutgoingChannelRegistered() should be true");
+        messenger.unregisterOutgoingPluginChannel(plugin, "BungeeCord");
+        assertTrue(!messenger.isOutgoingChannelRegistered(plugin, "BungeeCord"), "isOutgoingChannelRegistered() should be false");
+    }
+
 }

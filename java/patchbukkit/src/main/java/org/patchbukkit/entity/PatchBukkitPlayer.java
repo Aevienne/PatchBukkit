@@ -76,7 +76,7 @@ import patchbukkit.abilities.SetAbilitiesRequest;
 import patchbukkit.sound.PlayerEntityPlaySoundRequest;
 import patchbukkit.sound.PlayerPlaySoundRequest;
 
-@SuppressWarnings({ "deprecation", "removal" })
+@SuppressWarnings({ "deprecation", "removal", "unchecked" })
 public class PatchBukkitPlayer
     extends PatchBukkitHumanEntity
     implements Player {
@@ -94,11 +94,7 @@ public class PatchBukkitPlayer
 
     @Override
     public void sendRawMessage(UUID sender, String message) {
-        if (sender == null) {
-            sender = this.getUniqueId();
-        }
-
-        var request = SendMessageRequest.newBuilder().setMessage(message).setUuid(BridgeUtils.convertUuid(sender)).build();
+        var request = SendMessageRequest.newBuilder().setMessage(message != null ? message : "").setUuid(BridgeUtils.convertUuid(this.getUniqueId())).build();
         NativeBridgeFfi.sendMessage(request);
     }
 
@@ -1308,8 +1304,7 @@ public class PatchBukkitPlayer
 
     @Override
     public boolean isFlying() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isFlying'");
+        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getFlying();
     }
 
     @Override
@@ -1321,26 +1316,32 @@ public class PatchBukkitPlayer
 
     @Override
     public void setFlySpeed(float value) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setFlySpeed'");
+        if (value < -1.0f || value > 1.0f) {
+            throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
+        }
+        var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid).toBuilder().setFlySpeed(value).build();
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(playerUuid).build());
     }
 
     @Override
     public void setWalkSpeed(float value) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWalkSpeed'");
+        if (value < -1.0f || value > 1.0f) {
+            throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
+        }
+        var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid).toBuilder().setWalkSpeed(value).build();
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(playerUuid).build());
     }
 
     @Override
     public float getFlySpeed() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getFlySpeed'");
+        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getFlySpeed();
     }
 
     @Override
     public float getWalkSpeed() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getWalkSpeed'");
+        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getWalkSpeed();
     }
 
     @Override

@@ -1,6 +1,7 @@
 package org.patchbukkit.loader;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -121,8 +122,56 @@ public class PatchBukkitPluginLoader implements PluginLoader {
         Class<? extends Event>,
         Set<RegisteredListener>
     > createRegisteredListeners(Listener listener, Plugin plugin) {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createRegisteredListeners'"
-        );
+        Map<Class<? extends Event>, Set<RegisteredListener>> ret = new java.util.HashMap<>();
+        Set<java.lang.reflect.Method> methods;
+        try {
+            Method[] publicMethods = listener.getClass().getMethods();
+            Method[] declaredMethods = listener.getClass().getDeclaredMethods();
+            methods = new java.util.HashSet<>(publicMethods.length + declaredMethods.length);
+            for (Method method : publicMethods) {
+                methods.add(method);
+            }
+            for (Method method : declaredMethods) {
+                methods.add(method);
+            }
+        } catch (NoClassDefFoundError e) {
+            plugin.getLogger().severe("Plugin " + plugin.getDescription().getFullName() + " has failed to register events for " + listener.getClass() + " because " + e.getMessage() + " does not exist.");
+            return ret;
+        }
+
+        for (final Method method : methods) {
+            final org.bukkit.event.EventHandler eh = method.getAnnotation(org.bukkit.event.EventHandler.class);
+            if (eh == null) continue;
+
+            if (method.isBridge() || method.isSynthetic()) {
+                continue;
+            }
+
+            final Class<?> checkClass;
+            if (method.getParameterTypes().length != 1 || !Event.class.isAssignableFrom(checkClass = method.getParameterTypes()[0])) {
+                plugin.getLogger().severe(plugin.getDescription().getFullName() + " attempted to register an invalid EventHandler method signature \"" + method.toGenericString() + "\" in " + listener.getClass());
+                continue;
+            }
+
+            final Class<? extends Event> eventClass = checkClass.asSubclass(Event.class);
+            method.setAccessible(true);
+            Set<RegisteredListener> eventSet = ret.computeIfAbsent(eventClass, k -> new java.util.HashSet<>());
+
+            EventExecutor executor = (l, event) -> {
+                try {
+                    if (!eventClass.isAssignableFrom(event.getClass())) {
+                        return;
+                    }
+                    method.invoke(l, event);
+                } catch (java.lang.reflect.InvocationTargetException ex) {
+                    throw new org.bukkit.event.EventException(ex.getCause());
+                } catch (Throwable t) {
+                    throw new org.bukkit.event.EventException(t);
+                }
+            };
+
+            eventSet.add(new RegisteredListener(listener, executor, eh.priority(), plugin, eh.ignoreCancelled()));
+        }
+        return ret;
     }
 }

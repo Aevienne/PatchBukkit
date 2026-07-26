@@ -20,6 +20,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.patchbukkit.events.PatchBukkitEventManager;
+import org.patchbukkit.loader.PatchBukkitPluginClassLoader;
 import org.patchbukkit.permissions.PatchBukkitPermissionManager;
 
 @SuppressWarnings("removal")
@@ -77,37 +78,77 @@ public class PatchBukkitPluginManager implements PluginManager {
     @Override
     public @Nullable Plugin loadPlugin(@NotNull File file)
         throws InvalidPluginException, InvalidDescriptionException, UnknownDependencyException {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'loadPlugin'"
-        );
+        if (file == null || !file.exists()) {
+            throw new InvalidPluginException("File does not exist: " + file);
+        }
+
+        PatchBukkitPluginClassLoader loader;
+        try {
+            loader = new PatchBukkitPluginClassLoader(
+                getClass().getClassLoader(),
+                file
+            );
+        } catch (Exception e) {
+            throw new InvalidPluginException("Failed to load plugin description or classloader: " + file.getName(), e);
+        }
+
+        PluginDescriptionFile description = loader.getDescription();
+        String mainClass = description.getMain();
+        try {
+            Class<?> jarClass = Class.forName(mainClass, true, loader);
+            Class<? extends Plugin> pluginClass = jarClass.asSubclass(Plugin.class);
+            Plugin plugin = pluginClass.getDeclaredConstructor().newInstance();
+            loader.init((org.bukkit.plugin.java.JavaPlugin) plugin);
+            registerPlugin(plugin);
+            return plugin;
+        } catch (Throwable e) {
+            throw new InvalidPluginException("Failed to instantiate main class " + mainClass + " for plugin " + description.getName(), e);
+        }
     }
 
     @Override
     public @NotNull Plugin[] loadPlugins(@NotNull File directory) {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'loadPlugins'"
-        );
+        if (directory == null || !directory.isDirectory()) {
+            return new Plugin[0];
+        }
+
+        File[] files = directory.listFiles((dir, name) -> name.endsWith(".jar"));
+        if (files == null) {
+            return new Plugin[0];
+        }
+
+        return loadPlugins(files);
     }
 
     @Override
     public @NotNull Plugin[] loadPlugins(@NonNull @NotNull File[] files) {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'loadPlugins'"
-        );
+        java.util.List<Plugin> result = new java.util.ArrayList<>();
+        for (File file : files) {
+            if (file != null && file.isFile() && file.getName().endsWith(".jar")) {
+                try {
+                    Plugin plugin = loadPlugin(file);
+                    if (plugin != null) {
+                        result.add(plugin);
+                    }
+                } catch (Exception e) {
+                    server.getLogger().severe("Could not load plugin '" + file.getName() + "' in folder '" + file.getParent() + "': " + e.getMessage());
+                }
+            }
+        }
+        return result.toArray(new Plugin[0]);
     }
 
     @Override
     public void disablePlugins() {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'disablePlugins'"
-        );
+        for (Plugin plugin : getPlugins()) {
+            disablePlugin(plugin);
+        }
     }
 
     @Override
     public void clearPlugins() {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'clearPlugins'"
-        );
+        disablePlugins();
+        plugins.clear();
     }
 
     @Override
@@ -262,9 +303,7 @@ public class PatchBukkitPluginManager implements PluginManager {
 
     @Override
     public boolean useTimings() {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'useTimings'"
-        );
+        return false;
     }
 
     @Override
@@ -272,8 +311,9 @@ public class PatchBukkitPluginManager implements PluginManager {
         PluginMeta pluginMeta,
         PluginMeta dependencyConfig
     ) {
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isTransitiveDependency'"
-        );
+        if (pluginMeta == null || dependencyConfig == null) {
+            return false;
+        }
+        return pluginMeta.getPluginDependencies().contains(dependencyConfig.getName());
     }
 }

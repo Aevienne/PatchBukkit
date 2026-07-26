@@ -101,6 +101,7 @@ import patchbukkit.bridge.NativeBridgeFfi;
 import patchbukkit.log.LogLevel;
 import patchbukkit.log.SendLogRequest;
 
+@SuppressWarnings({ "deprecation", "removal", "unchecked" })
 public class PatchBukkitServer implements Server {
 
     private final String serverName =
@@ -181,40 +182,55 @@ public class PatchBukkitServer implements Server {
         this.pluginManager.registerPlugin(plugin);
     }
 
+    private final Messenger messenger = new org.patchbukkit.messaging.PatchBukkitMessenger();
+    private File pluginsFolder = new File("plugins");
+
+    private static void validateChannel(String channel) {
+        if (channel == null) throw new IllegalArgumentException("Channel cannot be null");
+        if (channel.length() > 64) {
+            throw new IllegalArgumentException("Channel '" + channel + "' is invalid");
+        }
+    }
+
     @Override
     public void sendPluginMessage(
         @NotNull Plugin source,
         @NotNull String channel,
         byte@NotNull [] message
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'sendPluginMessage'"
-        );
+        if (source == null) throw new IllegalArgumentException("Plugin source cannot be null");
+        validateChannel(channel);
+        if (message == null) throw new IllegalArgumentException("Message cannot be null");
+
+        if (!messenger.isOutgoingChannelRegistered(source, channel)) {
+            throw new IllegalArgumentException("Plugin " + source.getDescription().getFullName() + " has not registered outgoing channel '" + channel + "'");
+        }
+
+        for (Player player : getOnlinePlayers()) {
+            player.sendPluginMessage(source, channel, message);
+        }
     }
 
     @Override
     public @NotNull Set<String> getListeningPluginChannels() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getListeningPluginChannels'"
-        );
+        Set<String> channels = new java.util.HashSet<>();
+        for (Player player : getOnlinePlayers()) {
+            channels.addAll(player.getListeningPluginChannels());
+        }
+        return java.util.Collections.unmodifiableSet(channels);
     }
 
     @Override
     public @NotNull Iterable<? extends Audience> audiences() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'audiences'"
-        );
+        return (Collection<? extends Audience>) (Collection<?>) getOnlinePlayers();
     }
 
     @Override
     public @NotNull File getPluginsFolder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPluginsFolder'"
-        );
+        if (!pluginsFolder.exists()) {
+            pluginsFolder.mkdirs();
+        }
+        return this.pluginsFolder;
     }
 
     @Override
@@ -718,10 +734,10 @@ public class PatchBukkitServer implements Server {
         @NotNull CommandSender sender,
         @NotNull String commandLine
     ) throws CommandException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'dispatchCommand'"
-        );
+        if (sender == null) throw new IllegalArgumentException("Sender cannot be null");
+        if (commandLine == null) throw new IllegalArgumentException("CommandLine cannot be null");
+
+        return this.commandMap.dispatch(sender, commandLine);
     }
 
     @Override
@@ -1098,10 +1114,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull Messenger getMessenger() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMessenger'"
-        );
+        return this.messenger;
     }
 
     @Override

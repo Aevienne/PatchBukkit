@@ -112,14 +112,12 @@ impl ArgumentConsumer for AnyCommandNode {
 impl From<&CommandSender> for SimpleCommandSender {
     fn from(val: &CommandSender) -> Self {
         match val {
-            CommandSender::Rcon(_mutex) => todo!(),
-            CommandSender::Console => Self::Console,
+            CommandSender::Console | CommandSender::Rcon(_) | CommandSender::Dummy => Self::Console,
             CommandSender::Player(player) => Self::Player(
                 player.gameprofile.id.to_string(),
                 player.gameprofile.name.clone(),
             ),
-            CommandSender::CommandBlock(_block_entity, _world) => todo!(),
-            CommandSender::Dummy => Self::Console,
+            CommandSender::CommandBlock(_block_entity, _world) => Self::Console,
         }
     }
 }

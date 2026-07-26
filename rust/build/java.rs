@@ -22,6 +22,10 @@ pub fn setup_java(base: PathBuf) {
         )]))
         .skip_setting_native_lib()
         .with_base_path(resources)
+        .java_opts(vec![
+            j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
+        ])
         .build()
         .map_err(|err| format!("jvm failed to init: {err:?}"))
         .unwrap();

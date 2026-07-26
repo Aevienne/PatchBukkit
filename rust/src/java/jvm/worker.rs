@@ -209,7 +209,13 @@ impl JvmWorker {
     fn initialize_jvm(&mut self, j4rs_path: &PathBuf) -> anyhow::Result<()> {
         tracing::info!("Initializing JVM with path: {j4rs_path:?}");
 
-        let jvm = JvmBuilder::new().with_base_path(j4rs_path).build()?;
+        let jvm = JvmBuilder::new()
+            .with_base_path(j4rs_path)
+            .java_opts(vec![
+                j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
+                j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
+            ])
+            .build()?;
 
         initialize_callbacks(&jvm)?;
 
