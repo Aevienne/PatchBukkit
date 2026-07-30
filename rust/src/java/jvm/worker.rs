@@ -209,13 +209,31 @@ impl JvmWorker {
     fn initialize_jvm(&mut self, j4rs_path: &PathBuf) -> anyhow::Result<()> {
         tracing::info!("Initializing JVM with path: {j4rs_path:?}");
 
-        let jvm = JvmBuilder::new()
-            .with_base_path(j4rs_path)
-            .java_opts(vec![
-                j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
-                j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
-            ])
-            .build()?;
+        let jassets = j4rs_path.join("jassets");
+        let mut classpath_entries = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(&jassets) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                    if filename.starts_with("j4rs") && filename.ends_with(".jar") {
+                        classpath_entries.push(j4rs::ClasspathEntry::new(&path));
+                    }
+                }
+            }
+        }
+
+        let mut jvm_builder = JvmBuilder::new();
+        let mut jvm_builder = jvm_builder.with_base_path(j4rs_path).java_opts(vec![
+            j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
+        ]);
+
+        for entry in classpath_entries {
+            jvm_builder = jvm_builder.classpath_entry(entry);
+        }
+
+        let jvm = jvm_builder.build()?;
 
         initialize_callbacks(&jvm)?;
 
