@@ -22,10 +22,11 @@ pub fn setup_java(base: PathBuf) {
     if let Ok(entries) = fs::read_dir(&jassets) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                if filename.starts_with("j4rs") && filename.ends_with(".jar") {
-                    classpath_entries.push(j4rs::ClasspathEntry::new(&path));
-                }
+            if let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                && filename.starts_with("j4rs")
+                && filename.ends_with(".jar")
+            {
+                classpath_entries.push(j4rs::ClasspathEntry::new(&path));
             }
         }
     }
