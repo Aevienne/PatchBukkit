@@ -348,6 +348,11 @@ public class PatchBukkitEntity implements Entity {
     }
 
     @Override
+    public void setRotation(@NotNull io.papermc.paper.math.Angle yaw, @NotNull io.papermc.paper.math.Angle pitch) {
+        setRotation(yaw.degrees(), pitch.degrees());
+    }
+
+    @Override
     public void lookAt(double x, double y, double z, @NotNull LookAnchor entityAnchor) {
         Location loc = getLocation();
         double dx = x - loc.getX();

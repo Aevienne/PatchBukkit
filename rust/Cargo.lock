@@ -1546,9 +1546,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "818356c5132c1fede50f837ca96afbe78ff42413047f4abb886217845e1b6c8c"
+checksum = "707114b52a152fa7bdb290cd7cd5912d9467273b6d74e21b8d81aca1f8533f6b"
 dependencies = [
  "subtle",
  "typenum",
@@ -2773,7 +2773,7 @@ dependencies = [
 [[package]]
 name = "pumpkin"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "arc-swap",
  "base64 0.23.0",
@@ -2831,7 +2831,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-api-macros"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -2842,7 +2842,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-codecs"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "serde_json",
  "tracing",
@@ -2851,7 +2851,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-config"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "pumpkin-util",
  "serde",
@@ -2863,7 +2863,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-data"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "crc-fast",
  "phf",
@@ -2876,7 +2876,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-inventory"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "pumpkin-data",
  "pumpkin-protocol",
@@ -2891,7 +2891,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-macros"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "heck",
  "proc-macro-error2",
@@ -2903,7 +2903,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-nbt"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "bytes",
  "cesu8",
@@ -2918,7 +2918,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-protocol"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "aes",
  "async-compression",
@@ -2943,7 +2943,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-util"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "base64 0.23.0",
  "bytes",
@@ -2970,7 +2970,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-world"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#2577cfa3c934f497669f3dd4b54d3192252e0a0b"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
 dependencies = [
  "arc-swap",
  "bitflags 2.13.1",
@@ -3346,9 +3346,9 @@ dependencies = [
 
 [[package]]
 name = "ruzstd"
-version = "0.8.3"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8"
+checksum = "a252f5e20f038fe7b4ea53e073e65398d652c864cc162fc77c56c2f13717b888"
 
 [[package]]
 name = "same-file"
