@@ -19,7 +19,7 @@ jobs:
               uses: actions/setup-java@v5
               with:
                   java-version: "25"
-                  distribution: "temurin"
+                  distribution: "zulu"
             - name: Setup Gradle
               uses: gradle/actions/setup-gradle@v6
             - name: Build JAR with Gradle
@@ -82,7 +82,7 @@ jobs:
               uses: actions/setup-java@v5
               with:
                   java-version: "25"
-                  distribution: "temurin"
+                  distribution: "zulu"
             - name: Sync Pumpkin dependencies
               run: cargo update -p pumpkin -p pumpkin-api-macros -p pumpkin-data -p pumpkin-protocol -p pumpkin-util
               working-directory: rust
@@ -112,7 +112,7 @@ jobs:
               uses: actions/setup-java@v5
               with:
                   java-version: "25"
-                  distribution: "temurin"
+                  distribution: "zulu"
             - name: Sync Pumpkin dependencies
               run: cargo update -p pumpkin -p pumpkin-api-macros -p pumpkin-data -p pumpkin-protocol -p pumpkin-util
               working-directory: rust
@@ -149,7 +149,7 @@ jobs:
               uses: actions/setup-java@v5
               with:
                   java-version: "25"
-                  distribution: "temurin"
+                  distribution: "zulu"
             - name: Sync Pumpkin dependencies
               run: cargo update -p pumpkin -p pumpkin-api-macros -p pumpkin-data -p pumpkin-protocol -p pumpkin-util
               working-directory: rust
