@@ -49,7 +49,9 @@ pub fn ffi_native_bridge_damage_entity_impl(request: DamageEntityRequest) -> Opt
     })
 }
 
-pub fn ffi_native_bridge_get_entity_velocity_impl(request: Uuid) -> Option<crate::proto::patchbukkit::entity::EntityVelocityResponse> {
+pub fn ffi_native_bridge_get_entity_velocity_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::entity::EntityVelocityResponse> {
     with_player(Some(&request), |player| {
         let vel = player.living_entity.entity.velocity.load();
         crate::proto::patchbukkit::entity::EntityVelocityResponse {
@@ -73,7 +75,9 @@ pub fn ffi_native_bridge_set_entity_pose_impl(
     Some(())
 }
 
-pub fn ffi_native_bridge_get_gamemode_impl(request: Uuid) -> Option<crate::proto::patchbukkit::entity::GetGamemodeResponse> {
+pub fn ffi_native_bridge_get_gamemode_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::entity::GetGamemodeResponse> {
     with_player(Some(&request), |player| {
         let gamemode = player.gamemode.load();
         crate::proto::patchbukkit::entity::GetGamemodeResponse {

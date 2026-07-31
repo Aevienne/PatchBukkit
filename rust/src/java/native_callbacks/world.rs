@@ -131,4 +131,3 @@ pub fn ffi_native_bridge_set_world_border_impl(
 
     Some(())
 }
-
