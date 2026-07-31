@@ -1379,10 +1379,7 @@ public class PatchBukkitWorld
 
     @Override
     public @NotNull WorldBorder getWorldBorder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorldBorder'"
-        );
+        return new PatchBukkitWorldBorder(this);
     }
 
     @Override

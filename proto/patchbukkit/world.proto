@@ -44,3 +44,26 @@ message GetWorldsResponse {
   repeated patchbukkit.common.UUID world_uuids = 1;
 }
 
+message WorldBorderData {
+  double center_x = 1;
+  double center_z = 2;
+  double size = 3;
+  double target_size = 4;
+  int64 speed = 5;
+  int32 warning_time = 6;
+  int32 warning_blocks = 7;
+  double damage_per_block = 8;
+  double damage_buffer = 9;
+  int32 max_center_coordinate = 10;
+}
+
+message GetWorldBorderRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+}
+
+message SetWorldBorderRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+  WorldBorderData border = 2;
+}
+
+

@@ -21,13 +21,19 @@ service NativeBridge {
   rpc GetEntityHealth(patchbukkit.common.UUID) returns (patchbukkit.entity.EntityHealthResponse);
   rpc SetEntityHealth(patchbukkit.entity.SetEntityHealthRequest) returns (google.protobuf.Empty);
   rpc DamageEntity(patchbukkit.entity.DamageEntityRequest) returns (google.protobuf.Empty);
+  rpc GetEntityVelocity(patchbukkit.common.UUID) returns (patchbukkit.entity.EntityVelocityResponse);
   rpc SetEntityVelocity(patchbukkit.entity.SetEntityVelocityRequest) returns (google.protobuf.Empty);
+  rpc SetEntityPose(patchbukkit.entity.SetEntityPoseRequest) returns (google.protobuf.Empty);
   rpc TeleportEntity(patchbukkit.entity.TeleportEntityRequest) returns (google.protobuf.Empty);
+  rpc GetGamemode(patchbukkit.common.UUID) returns (patchbukkit.entity.GetGamemodeResponse);
+  rpc SetGamemode(patchbukkit.entity.SetGamemodeRequest) returns (google.protobuf.Empty);
 
   rpc GetBlockData(patchbukkit.world.GetBlockDataRequest) returns (patchbukkit.world.GetBlockDataResponse);
   rpc SetBlockData(patchbukkit.world.SetBlockDataRequest) returns (google.protobuf.Empty);
   rpc SpawnParticle(patchbukkit.world.SpawnParticleRequest) returns (google.protobuf.Empty);
   rpc GetWorlds(patchbukkit.common.EmptyRequest) returns (patchbukkit.world.GetWorldsResponse);
+  rpc GetWorldBorder(patchbukkit.world.GetWorldBorderRequest) returns (patchbukkit.world.WorldBorderData);
+  rpc SetWorldBorder(patchbukkit.world.SetWorldBorderRequest) returns (google.protobuf.Empty);
 
   rpc RegisterEvent(patchbukkit.events.RegisterEventRequest) returns (google.protobuf.Empty);
   rpc CallEvent(patchbukkit.events.CallEventRequest) returns (patchbukkit.events.CallEventResponse);

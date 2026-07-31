@@ -50,6 +50,8 @@ import org.checkerframework.checker.index.qual.NonNegative;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
+import org.patchbukkit.bridge.BridgeUtils;
+import patchbukkit.bridge.NativeBridgeFfi;
 
 import com.destroystokyo.paper.block.TargetBlockInfo;
 import com.destroystokyo.paper.block.TargetBlockInfo.FluidMode;
@@ -1128,14 +1130,21 @@ public class PatchBukkitHumanEntity
 
     @Override
     public GameMode getGameMode() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getGameMode'");
+        var resp = NativeBridgeFfi.getGamemode(BridgeUtils.convertUuid(this.getUniqueId()));
+        if (resp != null) {
+            return GameMode.getByValue(resp.getGamemode());
+        }
+        return GameMode.SURVIVAL;
     }
 
     @Override
     public void setGameMode(GameMode mode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setGameMode'");
+        if (mode == null) return;
+        var request = patchbukkit.entity.SetGamemodeRequest.newBuilder()
+            .setUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+            .setGamemode(mode.getValue())
+            .build();
+        NativeBridgeFfi.setGamemode(request);
     }
 
     @Override

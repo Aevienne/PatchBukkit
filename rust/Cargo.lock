@@ -2773,7 +2773,7 @@ dependencies = [
 [[package]]
 name = "pumpkin"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "arc-swap",
  "base64 0.23.0",
@@ -2831,7 +2831,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-api-macros"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -2842,7 +2842,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-codecs"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "serde_json",
  "tracing",
@@ -2851,7 +2851,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-config"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "pumpkin-util",
  "serde",
@@ -2863,7 +2863,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-data"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "crc-fast",
  "phf",
@@ -2876,7 +2876,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-inventory"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "pumpkin-data",
  "pumpkin-protocol",
@@ -2891,7 +2891,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-macros"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "heck",
  "proc-macro-error2",
@@ -2903,7 +2903,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-nbt"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "bytes",
  "cesu8",
@@ -2918,7 +2918,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-protocol"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "aes",
  "async-compression",
@@ -2943,7 +2943,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-util"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "base64 0.23.0",
  "bytes",
@@ -2970,7 +2970,7 @@ dependencies = [
 [[package]]
 name = "pumpkin-world"
 version = "0.1.0-dev+26.2"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#a3b66be27b2f70afc8dbe43923ab2cfbc36e94dd"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#75994f3302fa76078087b9a113130541e4d3fc37"
 dependencies = [
  "arc-swap",
  "bitflags 2.13.1",

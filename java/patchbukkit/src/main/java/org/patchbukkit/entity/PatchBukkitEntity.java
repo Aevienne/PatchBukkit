@@ -287,6 +287,10 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull Vector getVelocity() {
+        var resp = NativeBridgeFfi.getEntityVelocity(BridgeUtils.convertUuid(this.uuid));
+        if (resp != null) {
+            return new Vector(resp.getX(), resp.getY(), resp.getZ());
+        }
         return this.velocity.clone();
     }
 

@@ -641,10 +641,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull WorldBorder createWorldBorder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createWorldBorder'"
-        );
+        return new org.patchbukkit.world.PatchBukkitWorldBorder(null);
     }
 
     @Override

@@ -39,3 +39,20 @@ message SetEntityPoseRequest {
   string pose = 2;
 }
 
+message EntityVelocityResponse {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message GetGamemodeResponse {
+  int32 gamemode = 1;
+}
+
+message SetGamemodeRequest {
+  patchbukkit.common.UUID uuid = 1;
+  int32 gamemode = 2;
+}
+
+
+

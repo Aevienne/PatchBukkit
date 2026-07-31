@@ -1402,16 +1402,16 @@ public class PatchBukkitPlayer
         throw new UnsupportedOperationException("Unimplemented method 'setScoreboard'");
     }
 
+    private WorldBorder customWorldBorder;
+
     @Override
     public @org.jspecify.annotations.Nullable WorldBorder getWorldBorder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getWorldBorder'");
+        return this.customWorldBorder != null ? this.customWorldBorder : getWorld().getWorldBorder();
     }
 
     @Override
     public void setWorldBorder(@org.jspecify.annotations.Nullable WorldBorder border) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWorldBorder'");
+        this.customWorldBorder = border;
     }
 
     @Override
