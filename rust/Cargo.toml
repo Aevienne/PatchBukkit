@@ -47,7 +47,7 @@ protoc-bin-vendored = "3"
 glob = "0.3"
 
 [profile.release]
-lto = true
+lto = "thin"
 
 [lints.clippy]
 # Groups
