@@ -100,6 +100,7 @@ impl JvmWorker {
                     };
                 }
                 JvmCommand::InstantiateAllPlugins {
+                    plugins_dir,
                     respond_to,
                     server,
                     command_tx,
@@ -113,6 +114,7 @@ impl JvmWorker {
                         self.plugin_manager
                             .instantiate_all_plugins(
                                 jvm,
+                                &plugins_dir,
                                 &server,
                                 command_tx,
                                 &mut self.command_manager,
@@ -216,7 +218,6 @@ impl JvmWorker {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(filename) = path.file_name().and_then(|n| n.to_str())
-                    && filename.starts_with("j4rs")
                     && filename.ends_with(".jar")
                 {
                     classpath_entries.push(j4rs::ClasspathEntry::new(&path));
@@ -227,6 +228,9 @@ impl JvmWorker {
         let mut jvm_builder = JvmBuilder::new();
         let mut jvm_builder = jvm_builder.with_base_path(j4rs_path).java_opts(vec![
             j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--enable-final-field-mutation=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--add-opens=java.base/java.lang=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"),
             j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
         ]);
 
@@ -248,13 +252,10 @@ impl JvmWorker {
 }
 
 pub fn setup_patchbukkit_server(jvm: &Jvm) -> anyhow::Result<()> {
-    let patchbukkit_server =
-        jvm.create_instance("org.patchbukkit.PatchBukkitServer", InvocationArg::empty())?;
-
     jvm.invoke_static(
-        "org.bukkit.Bukkit",
-        "setServer",
-        &[InvocationArg::from(patchbukkit_server)],
+        "org.patchbukkit.PatchBukkitServer",
+        "initServer",
+        InvocationArg::empty(),
     )?;
 
     Ok(())

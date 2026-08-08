@@ -16,136 +16,108 @@ import org.jetbrains.annotations.Nullable;
 import net.kyori.adventure.text.Component;
 
 public class PatchBukkitBlockCommandSender implements BlockCommandSender {
-    @NotNull
+    @Override
     public Block getBlock() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getBlock'");
+        return null;
     }
 
     @Override
     public boolean isPermissionSet(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isPermissionSet'");
+        return true;
     }
 
     @Override
     public boolean isPermissionSet(@NotNull Permission perm) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isPermissionSet'");
+        return true;
     }
 
     @Override
     public boolean hasPermission(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasPermission'");
+        return true;
     }
 
     @Override
     public boolean hasPermission(@NotNull Permission perm) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasPermission'");
+        return true;
     }
 
     @Override
     public @NotNull PermissionAttachment addAttachment(@NotNull Plugin plugin, @NotNull String name, boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return new PermissionAttachment(plugin, this);
     }
 
     @Override
     public @NotNull PermissionAttachment addAttachment(@NotNull Plugin plugin) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return new PermissionAttachment(plugin, this);
     }
 
     @Override
     public @Nullable PermissionAttachment addAttachment(@NotNull Plugin plugin, @NotNull String name, boolean value,
             int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return new PermissionAttachment(plugin, this);
     }
 
     @Override
     public @Nullable PermissionAttachment addAttachment(@NotNull Plugin plugin, int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAttachment'");
+        return new PermissionAttachment(plugin, this);
     }
 
     @Override
     public void removeAttachment(@NotNull PermissionAttachment attachment) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeAttachment'");
     }
 
     @Override
     public void recalculatePermissions() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'recalculatePermissions'");
     }
 
     @Override
     public @NotNull Set<PermissionAttachmentInfo> getEffectivePermissions() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEffectivePermissions'");
+        return java.util.Collections.emptySet();
     }
 
     @Override
     public boolean isOp() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isOp'");
+        return true;
     }
 
     @Override
     public void setOp(boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setOp'");
     }
 
     @Override
     public void sendMessage(@NotNull String message) {
-        throw new UnsupportedOperationException("Unimplemented method 'sendMessage'");
     }
 
     @Override
     public void sendMessage(@NotNull String... messages) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendMessage'");
     }
 
     @Override
     public void sendMessage(@Nullable UUID sender, @NotNull String message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendMessage'");
     }
 
     @Override
     public void sendMessage(@Nullable UUID sender, @NotNull String... messages) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendMessage'");
     }
 
     @Override
     public @NotNull Server getServer() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getServer'");
+        return org.bukkit.Bukkit.getServer();
     }
 
     @Override
     public @NotNull String getName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getName'");
+        return "@";
     }
 
     @Override
     public @NotNull Spigot spigot() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'spigot'");
+        return new Spigot();
     }
 
     @Override
     public @NotNull Component name() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'name'");
+        return Component.text("@");
     }
 
 }

@@ -55,6 +55,18 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
     public static final PatchBukkitUnsafeValues INSTANCE =
         new PatchBukkitUnsafeValues();
 
+    public @NotNull List<net.kyori.adventure.text.Component> computeTooltipLines(@NotNull ItemStack itemStack, @NotNull TooltipContext tooltipContext, @Nullable Player player) {
+        return java.util.Collections.emptyList();
+    }
+
+    public io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager<org.bukkit.plugin.Plugin> createPluginLifecycleEventManager(org.bukkit.plugin.java.JavaPlugin plugin, java.util.function.BooleanSupplier registrationCheck) {
+        return null;
+    }
+
+    public @Nullable Color getSpawnEggLayerColor(EntityType entityType, int layer) {
+        return null;
+    }
+
     @Override
     public boolean isSupportedApiVersion(String apiVersion) {
         if (apiVersion == null) return false;
@@ -78,8 +90,7 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 
 	@Override
 	public Material toLegacy(Material material) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'toLegacy'");
+		return material;
 	}
 
 	@Override
@@ -99,122 +110,107 @@ public class PatchBukkitUnsafeValues implements UnsafeValues {
 
 	@Override
 	public BlockData fromLegacy(Material material, byte data) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'fromLegacy'");
+		return material != null ? material.createBlockData() : null;
 	}
 
 	@Override
 	public Material getMaterial(String material, int version) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getMaterial'");
+		try {
+			return Material.valueOf(material.toUpperCase(java.util.Locale.ROOT));
+		} catch (Exception e) {
+			return Material.getMaterial(material);
+		}
 	}
 
 	@Override
 	public int getDataVersion() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getDataVersion'");
+		return 3953;
 	}
 
 	@Override
 	public ItemStack modifyItemStack(ItemStack stack, String arguments) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'modifyItemStack'");
+		return stack;
+	}
+
+	public @NotNull ItemStack createEmptyStack() {
+		return new ItemStack(Material.AIR);
 	}
 
 	@Override
 	public byte[] processClass(PluginDescriptionFile pdf, String path, byte[] clazz) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'processClass'");
+		return clazz;
 	}
 
-	@Override
-	public Advancement loadAdvancement(NamespacedKey key, String advancement) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'loadAdvancement'");
+	public Advancement loadAdvancement(net.kyori.adventure.key.Key key, String advancement, boolean checkKey) {
+		return null;
+	}
+
+	public List<Advancement> loadAdvancements(Map<net.kyori.adventure.key.Key, String> advancements, boolean checkKey) {
+		return java.util.Collections.emptyList();
 	}
 
 	@Override
 	public boolean removeAdvancement(NamespacedKey key) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'removeAdvancement'");
+		return false;
 	}
 
 	@Override
 	public String get(Class<?> aClass, String value) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'get'");
+		return null;
 	}
 
-	@Override
 	public <B extends Keyed> B get(RegistryKey<B> registry, NamespacedKey key) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'get'");
+		if (registry == null || key == null) return null;
+		org.bukkit.Registry<B> reg = io.papermc.paper.registry.RegistryAccess.registryAccess().getRegistry(registry);
+		return reg != null ? reg.get(key) : null;
 	}
 
 	@Override
 	public @NotNull JsonObject serializeItemAsJson(@NotNull ItemStack itemStack) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'serializeItemAsJson'");
+		return new JsonObject();
 	}
 
 	@Override
 	public @NotNull ItemStack deserializeItemFromJson(@NotNull JsonObject data) throws IllegalArgumentException {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'deserializeItemFromJson'");
+		return new ItemStack(Material.STONE);
 	}
 
-	@Override
 	public byte @NotNull [] serializeEntity(@NotNull Entity entity,
 			@NotNull EntitySerializationFlag... serializationFlags) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'serializeEntity'");
+		return new byte[0];
 	}
 
-	@Override
 	public @NotNull Entity deserializeEntity(byte @NotNull [] data, @NotNull World world, boolean preserveUUID,
 			boolean preservePassengers) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'deserializeEntity'");
+		return null;
 	}
 
 
 	@Override
 	public @NotNull String getMainLevelName() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getMainLevelName'");
+		return "world";
 	}
 
 	@Override
 	public int getProtocolVersion() {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getProtocolVersion'");
+		return 769;
 	}
 
-
-
-	@Override
 	public @NotNull ItemStack deserializeStack(@NotNull Map<String, Object> args) {
 	    System.out.println("Deserializing itemstack: " + args);
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'deserializeStack'");
+		return new ItemStack(Material.STONE);
 	}
 
-	@Override
 	public @NotNull ItemStack deserializeItemHover(@NotNull ShowItem itemHover) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'deserializeItemHover'");
+		return new ItemStack(Material.STONE);
 	}
 
-	@Override
 	public InternalPotionData getInternalPotionData(NamespacedKey key) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'getInternalPotionData'");
+		return null;
 	}
 
-	@Override
 	public int nextEntityId(World world) {
-		// TODO Auto-generated method stub
-		throw new UnsupportedOperationException("Unimplemented method 'nextEntityId'");
+		return (int) (System.currentTimeMillis() & 0x7FFFFFFF);
 	}
 
 	

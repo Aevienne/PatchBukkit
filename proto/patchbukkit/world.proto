@@ -66,4 +66,15 @@ message SetWorldBorderRequest {
   WorldBorderData border = 2;
 }
 
+message GetWorldInfoRequest {
+  patchbukkit.common.UUID world_uuid = 1;
+}
+
+message GetWorldInfoResponse {
+  int32 min_height = 1;
+  int32 max_height = 2;
+  int32 height = 3;
+  int64 seed = 4;
+}
+
 

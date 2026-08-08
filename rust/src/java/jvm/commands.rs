@@ -33,6 +33,7 @@ pub enum JvmCommand {
         respond_to: oneshot::Sender<LoadPluginResult>,
     },
     InstantiateAllPlugins {
+        plugins_dir: PathBuf,
         respond_to: oneshot::Sender<Result<()>>,
         server: Arc<Context>,
         command_tx: mpsc::Sender<Self>,

@@ -4,10 +4,12 @@ package patchbukkit.bridge;
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 import "patchbukkit/abilities.proto";
+import "patchbukkit/command.proto";
 import "patchbukkit/common/types.proto";
 import "patchbukkit/config.proto";
 import "patchbukkit/entity.proto";
 import "patchbukkit/events/event.proto";
+import "patchbukkit/itemstack.proto";
 import "patchbukkit/log.proto";
 import "patchbukkit/message.proto";
 import "patchbukkit/registry.proto";
@@ -27,6 +29,15 @@ service NativeBridge {
   rpc TeleportEntity(patchbukkit.entity.TeleportEntityRequest) returns (google.protobuf.Empty);
   rpc GetGamemode(patchbukkit.common.UUID) returns (patchbukkit.entity.GetGamemodeResponse);
   rpc SetGamemode(patchbukkit.entity.SetGamemodeRequest) returns (google.protobuf.Empty);
+  rpc IsOnGround(patchbukkit.common.UUID) returns (patchbukkit.entity.IsOnGroundResponse);
+  rpc GetPlayerLocale(patchbukkit.common.UUID) returns (patchbukkit.entity.GetPlayerLocaleResponse);
+  rpc IsOp(patchbukkit.common.UUID) returns (patchbukkit.entity.IsOpResponse);
+
+  rpc GetPlayerInventory(patchbukkit.common.UUID) returns (patchbukkit.itemstack.GetPlayerInventoryResponse);
+  rpc SetPlayerInventorySlot(patchbukkit.itemstack.SetPlayerInventorySlotRequest) returns (google.protobuf.Empty);
+  rpc SetPlayerSelectedSlot(patchbukkit.itemstack.SetPlayerSelectedSlotRequest) returns (google.protobuf.Empty);
+  rpc SetPlayerEquipment(patchbukkit.itemstack.SetPlayerEquipmentRequest) returns (google.protobuf.Empty);
+  rpc ClearPlayerInventory(patchbukkit.common.UUID) returns (google.protobuf.Empty);
 
   rpc GetBlockData(patchbukkit.world.GetBlockDataRequest) returns (patchbukkit.world.GetBlockDataResponse);
   rpc SetBlockData(patchbukkit.world.SetBlockDataRequest) returns (google.protobuf.Empty);
@@ -50,4 +61,9 @@ service NativeBridge {
   rpc SendLog(patchbukkit.log.SendLogRequest) returns (google.protobuf.Empty);
 
   rpc GetPatchBukkitConfig(patchbukkit.common.EmptyRequest) returns (patchbukkit.config.GetPatchBukkitConfigResponse);
+
+  rpc RegisterCommand(patchbukkit.command.RegisterCommandRequest) returns (google.protobuf.Empty);
+
+  rpc GetWorldInfo(patchbukkit.world.GetWorldInfoRequest) returns (patchbukkit.world.GetWorldInfoResponse);
 }
+

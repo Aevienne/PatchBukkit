@@ -5,6 +5,7 @@ package patchbukkit.events;
 import "patchbukkit/common/types.proto";
 import "patchbukkit/events/player_events.proto";
 import "patchbukkit/events/server_events.proto";
+import "patchbukkit/events/block_events.proto";
 
 option java_multiple_files = true;
 option java_package = "patchbukkit.events";
@@ -17,6 +18,21 @@ message Event {
     PlayerQuitEvent player_quit = 4;
     PlayerInteractEvent player_interact = 5;
     PlayerGameModeChangeEvent player_gamemode_change = 6;
+    BlockBreakEvent block_break = 7;
+    BlockPlaceEvent block_place = 8;
+    PlayerToggleSneakEvent player_toggle_sneak = 9;
+    PlayerToggleSprintEvent player_toggle_sprint = 10;
+    PlayerToggleFlightEvent player_toggle_flight = 11;
+    PlayerChatEvent player_chat = 12;
+    PlayerMoveEvent player_move = 13;
+    PlayerInteractEntityEvent player_interact_entity = 14;
+    SignChangeEvent sign_change = 15;
+    BlockDamageEvent block_damage = 16;
+    ServerCommandEvent server_command = 17;
+    BlockIgniteEvent block_ignite = 18;
+    BlockGrowEvent block_grow = 19;
+    BlockFormEvent block_form = 20;
+    BlockFadeEvent block_fade = 21;
   }
 }
 

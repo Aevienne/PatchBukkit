@@ -40,6 +40,9 @@ pub fn setup_java(base: PathBuf) {
         .with_base_path(&resources)
         .java_opts(vec![
             j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--enable-final-field-mutation=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--add-opens=java.base/java.lang=ALL-UNNAMED"),
+            j4rs::JavaOpt::new("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"),
             j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
         ]);
 
@@ -59,10 +62,6 @@ pub fn setup_java(base: PathBuf) {
     }
 
     fs::create_dir_all(&jassets).unwrap();
-    let dest_jar = jassets.join("patchbukkit.jar");
-    fs::copy(&patchbukkit_jar, &dest_jar)
-        .map_err(|err| format!("Failed to copy patchbukkit.jar to jassets: {err:?}"))
-        .unwrap();
 
     let cdylib = std::env::var("CARGO_CDYLIB_FILE_J4RS").unwrap();
     let cdylib = PathBuf::from(cdylib);
@@ -71,10 +70,16 @@ pub fn setup_java(base: PathBuf) {
     fs::create_dir_all(&cdylib_to).unwrap();
 
     let original_name = cdylib.file_name().unwrap().to_string_lossy();
-    let stem = original_name.split('-').next().unwrap(); // before the first '-'
-    let ext = cdylib.extension().unwrap().to_string_lossy();
+    let mut target_name = original_name.split('-').next().unwrap().to_string();
+    if !target_name.ends_with(".dll")
+        && !target_name.ends_with(".so")
+        && !target_name.ends_with(".dylib")
+        && let Some(ext) = cdylib.extension()
+    {
+        target_name = format!("{target_name}.{}", ext.to_string_lossy());
+    }
 
-    cdylib_to.push(format!("{stem}.{ext}"));
+    cdylib_to.push(target_name);
 
     fs::copy(&cdylib, &cdylib_to)
         .map_err(|err| format!("Failed to copy j4rs native lib: {err:?}"))

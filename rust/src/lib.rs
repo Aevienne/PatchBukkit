@@ -23,7 +23,7 @@ use crate::{
     config::patchbukkit::PatchBukkitConfig,
     java::{
         jvm::{
-            commands::{JvmCommand, LoadPluginResult},
+            commands::JvmCommand,
             worker::JvmWorker,
         },
         resources::setup_j4rs,
@@ -42,69 +42,7 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
     let config = PatchBukkitConfig::get_or_create(config_path)
         .map_err(|e| format!("Failed to setup PatchBukkit config: {e}"))?;
 
-    // Discover and prepare JAR files
-    let jar_paths = discover_jar_files(&dirs.plugins);
-    for jar_path in jar_paths {
-        {
-            let (tx, rx) = oneshot::channel();
-            let result = plugin
-                .command_tx
-                .send(JvmCommand::LoadPlugin {
-                    plugin_path: jar_path.clone(),
-                    respond_to: tx,
-                })
-                .await;
-            if let Err(e) = result {
-                tracing::error!(
-                    "Failed to send command to load plugin {}: {}",
-                    jar_path.display(),
-                    e
-                );
-            }
-            match rx.await {
-                Ok(result) => match result {
-                    LoadPluginResult::SuccessfullyLoadedSpigot => {
-                        tracing::info!("Loaded Spigot plugin from JAR `{}`", jar_path.display());
-                    }
-                    LoadPluginResult::SuccessfullyLoadedPaper => {
-                        tracing::info!("Loaded Paper plugin from JAR `{}`", jar_path.display());
-                    }
-                    LoadPluginResult::FailedToLoadSpigotPlugin(error) => {
-                        tracing::error!(
-                            "Failed to load Spigot plugin from JAR `{}` with error: {}",
-                            jar_path.display(),
-                            error
-                        );
-                    }
-                    LoadPluginResult::FailedToLoadPaperPlugin(error) => {
-                        tracing::error!(
-                            "Failed to load Paper plugin from JAR `{}` with error: {}",
-                            jar_path.display(),
-                            error
-                        );
-                    }
-                    LoadPluginResult::FailedToReadConfigurationFile(error) => {
-                        tracing::error!(
-                            "Failed to read configuration file from JAR `{}`: {}",
-                            jar_path.display(),
-                            error
-                        );
-                    }
-                    LoadPluginResult::NoConfigurationFile => {
-                        tracing::warn!(
-                            "No configuration file found for plugin from JAR `{}`",
-                            jar_path.display()
-                        );
-                    }
-                },
-                Err(e) => tracing::error!(
-                    "Failed to receive load plugin response for JAR `{}`: {}",
-                    jar_path.display(),
-                    e
-                ),
-            }
-        };
-    }
+
 
     // Manage embedded resources
     setup_j4rs(&dirs.j4rs).map_err(|e| format!("Failed to setup J4RS: {e}"))?;
@@ -132,6 +70,7 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
         plugin
             .command_tx
             .send(JvmCommand::InstantiateAllPlugins {
+                plugins_dir: dirs.plugins.clone(),
                 respond_to: tx,
                 server: server.clone(),
                 command_tx: plugin.command_tx.clone(),
@@ -154,6 +93,28 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
             .map_err(|e| format!("Unable to receive response from enable all plugins: {e}"))?
             .map_err(|e| format!("Failed to enable all plugins: {e}"))?;
     };
+
+    // Register Bukkit plugin loader with Pumpkin so Bukkit/Paper plugins appear in Pumpkin's native /plugins command
+    let bukkit_loader = Arc::new(crate::java::plugin::loader::BukkitPluginLoader);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("Failed to build Tokio runtime: {e}"))?;
+
+    let server_ref = server.clone();
+    let jar_paths: Vec<_> = discover_jar_files(&dirs.plugins).collect();
+    rt.block_on(async move {
+        server_ref
+            .plugin_manager
+            .add_loader(&server_ref.server, bukkit_loader)
+            .await;
+        for jar_path in &jar_paths {
+            let _ = server_ref
+                .plugin_manager
+                .try_load_plugin(&server_ref.server, jar_path)
+                .await;
+        }
+    });
 
     Ok(())
 }
@@ -187,12 +148,12 @@ async fn on_unload_inner(plugin: &PatchBukkitPlugin, _server: Arc<Context>) -> R
 }
 
 #[plugin_method]
-async fn on_load(&mut self, server: Arc<Context>) -> Result<(), String> {
+async fn on_load(&self, server: Arc<Context>) -> Result<(), String> {
     on_load_inner(self, server).await
 }
 
 #[plugin_method]
-async fn on_unload(&mut self, server: Arc<Context>) -> Result<(), String> {
+async fn on_unload(&self, server: Arc<Context>) -> Result<(), String> {
     on_unload_inner(self, server).await
 }
 

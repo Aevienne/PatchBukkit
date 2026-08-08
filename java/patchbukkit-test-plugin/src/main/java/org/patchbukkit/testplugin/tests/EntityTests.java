@@ -43,4 +43,30 @@ public final class EntityTests {
         }
     }
 
+    @ConformanceTest(name = "Player ground state and velocity getters run cleanly", category = TestCategory.ENTITY)
+    public void testPlayerGroundStateAndVelocity() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            boolean onGround = p.isOnGround();
+            org.bukkit.util.Vector vel = p.getVelocity();
+            assertNotNull(onGround, "Player.isOnGround()");
+            assertNotNull(vel, "Player.getVelocity()");
+        }
+    }
+
+    @ConformanceTest(name = "Player inventory and equipment getters and setters run cleanly", category = TestCategory.ENTITY)
+    public void testPlayerInventoryAndEquipment() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            org.bukkit.inventory.PlayerInventory inv = p.getInventory();
+            org.bukkit.inventory.EntityEquipment eq = p.getEquipment();
+            assertNotNull(inv, "Player.getInventory()");
+            assertNotNull(eq, "Player.getEquipment()");
+            assertNotNull(inv.getItemInMainHand(), "PlayerInventory.getItemInMainHand()");
+            assertNotNull(inv.getItemInOffHand(), "PlayerInventory.getItemInOffHand()");
+            assertNotNull(inv.getArmorContents(), "PlayerInventory.getArmorContents()");
+            assertTrue(inv.getArmorContents().length == 4, "PlayerInventory.getArmorContents().length == 4");
+            assertNotNull(inv.getContents(), "PlayerInventory.getContents()");
+            assertTrue(inv.getContents().length == 41, "PlayerInventory.getContents().length == 41");
+            assertTrue(inv.getHeldItemSlot() >= 0 && inv.getHeldItemSlot() < 9, "PlayerInventory.getHeldItemSlot() valid slot");
+        }
+    }
 }

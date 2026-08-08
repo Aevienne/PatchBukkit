@@ -36,12 +36,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
 public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
-    @Override
     public ComponentFlattener componentFlattener() {
         return ComponentFlattener.basic();
     }
 
-    @Override
     public Component resolveWithContext(
         Component component,
         @Nullable CommandSender context,
@@ -51,12 +49,25 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         return component;
     }
 
-    @Override
-    public ItemStack createEmptyStack() {
-        return new ItemStack(Material.AIR);
+    private static final java.lang.reflect.Constructor<ItemStack> ITEM_STACK_NO_ARG_CTOR;
+
+    static {
+        try {
+            ITEM_STACK_NO_ARG_CTOR = ItemStack.class.getDeclaredConstructor();
+            ITEM_STACK_NO_ARG_CTOR.setAccessible(true);
+        } catch (Exception e) {
+            throw new ExceptionInInitializerError(e);
+        }
     }
 
-    @Override
+    public ItemStack createEmptyStack() {
+        try {
+            return ITEM_STACK_NO_ARG_CTOR.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create empty ItemStack", e);
+        }
+    }
+
     public LifecycleEventManager<Plugin> createPluginLifecycleEventManager(
         JavaPlugin plugin,
         BooleanSupplier registrationCheck
@@ -64,52 +75,46 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         return null;
     }
 
-    @Override
     public String getStatisticCriteriaKey(Statistic statistic) {
         return statistic.name().toLowerCase();
     }
 
-    @Override
     public @Nullable Attributable getDefaultEntityAttributes(NamespacedKey key) {
         return null;
     }
 
-    @Override
     public boolean hasDefaultEntityAttributes(NamespacedKey key) {
         return false;
     }
 
-    @Override
     public ItemStack deserializeItem(byte[] bytes) {
-        return new ItemStack(Material.AIR);
+        return createEmptyStack();
     }
 
-    @Override
     public String getTranslationKey(EntityType entityType) {
         return entityType.translationKey();
     }
 
-    @Override
+    public org.bukkit.entity.SpawnCategory getSpawnCategory(EntityType entityType) {
+        return org.bukkit.entity.SpawnCategory.MISC;
+    }
+
     public @Nullable DamageEffect getDamageEffect(String key) {
         return null;
     }
 
-    @Override
     public DamageSource.Builder createDamageSourceBuilder(DamageType damageType) {
         return null;
     }
 
-    @Override
     public PoiType.Occupancy createOccupancy(String type) {
         return null;
     }
 
-    @Override
     public Set<Pose> validMannequinPoses() {
         return Set.of();
     }
 
-    @Override
     public <MODERN, LEGACY> GameRule<LEGACY> legacyGameRuleBridge(
         GameRule<MODERN> modernRule,
         Function<LEGACY, MODERN> toModern,
@@ -119,27 +124,22 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         return null;
     }
 
-    @Override
     public Component defaultMannequinDescription() {
         return Component.empty();
     }
 
-    @Override
     public SkinParts.Mutable allSkinParts() {
         return null;
     }
 
-    @Override
     public ResolvableProfile defaultMannequinProfile() {
         return null;
     }
 
-    @Override
     public Predicate<CommandSourceStack> restricted(Predicate<CommandSourceStack> predicate) {
         return predicate;
     }
 
-    @Override
     public CombatEntry createCombatEntry(
         DamageSource damageSource,
         float damage,
@@ -149,7 +149,6 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         return null;
     }
 
-    @Override
     public CombatEntry createCombatEntry(
         LivingEntity entity,
         DamageSource damageSource,
@@ -158,7 +157,6 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         return null;
     }
 
-    @Override
     public Biome constructLegacyCustomBiome() {
         return null;
     }

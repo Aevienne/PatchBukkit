@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 import org.bukkit.Server;
 import org.bukkit.event.Event;
@@ -45,9 +46,16 @@ public class PatchBukkitPluginManager implements PluginManager {
         throws IllegalArgumentException {}
 
     public void registerPlugin(@NotNull Plugin plugin) {
+        if (plugin == null || plugin.getName() == null) {
+            return;
+        }
         plugins.put(plugin.getName().toLowerCase(java.util.Locale.ENGLISH), plugin);
-        for (String provided : plugin.getDescription().getProvides()) {
-            plugins.putIfAbsent(provided.toLowerCase(java.util.Locale.ENGLISH), plugin);
+        if (plugin.getDescription() != null && plugin.getDescription().getProvides() != null) {
+            for (String provided : plugin.getDescription().getProvides()) {
+                if (provided != null && !provided.isBlank()) {
+                    plugins.putIfAbsent(provided.toLowerCase(java.util.Locale.ENGLISH), plugin);
+                }
+            }
         }
     }
 
@@ -99,6 +107,12 @@ public class PatchBukkitPluginManager implements PluginManager {
             Class<? extends Plugin> pluginClass = jarClass.asSubclass(Plugin.class);
             Plugin plugin = pluginClass.getDeclaredConstructor().newInstance();
             loader.init((org.bukkit.plugin.java.JavaPlugin) plugin);
+            try {
+                plugin.onLoad();
+            } catch (Throwable t) {
+                server.getLogger().severe("Error loading " + plugin.getName() + ": " + t.getMessage());
+                t.printStackTrace();
+            }
             registerPlugin(plugin);
             return plugin;
         } catch (Throwable e) {
@@ -206,7 +220,7 @@ public class PatchBukkitPluginManager implements PluginManager {
             try {
                 plugin.getPluginLoader().enablePlugin(plugin);
             } catch (Throwable ex) {
-                server.getLogger().severe("Error enabling " + plugin.getName() + ": " + ex.getMessage());
+                server.getLogger().log(Level.SEVERE, "Error enabling " + plugin.getName() + " (Is it up to date?)", ex);
             }
         }
     }
@@ -217,7 +231,11 @@ public class PatchBukkitPluginManager implements PluginManager {
             return;
         }
         if (plugin.isEnabled()) {
-            plugin.getPluginLoader().disablePlugin(plugin);
+            try {
+                plugin.getPluginLoader().disablePlugin(plugin);
+            } catch (Throwable ex) {
+                server.getLogger().log(Level.SEVERE, "Error disabling " + plugin.getName(), ex);
+            }
         }
     }
 

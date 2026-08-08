@@ -224,7 +224,7 @@ pub fn initialize_ffi_callbacks(jvm: &j4rs::Jvm) -> anyhow::Result<()> {{
             file,
             r#"
     // Initialize {}
-    jvm.invoke_static(
+    if let Err(e) = jvm.invoke_static(
         "{}",
         "init",
         &["#,
@@ -242,13 +242,17 @@ pub fn initialize_ffi_callbacks(jvm: &j4rs::Jvm) -> anyhow::Result<()> {{
         writeln!(
             file,
             r#"        ],
-    )?;
+    ) {{
+        tracing::error!("Failed to initialize FFI service: {{:?}}", e);
+    }}
 
-    jvm.invoke_static(
+    if let Err(e) = jvm.invoke_static(
         "{}",
         "initFree",
         &[InvocationArg::try_from(ffi_free_bytes as *const () as i64)?.into_primitive()?],
-    )?;"#,
+    ) {{
+        tracing::error!("Failed to initialize FFI service initFree: {{:?}}", e);
+    }}"#,
             service.java_class
         )
         .unwrap();

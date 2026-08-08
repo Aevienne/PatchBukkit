@@ -28,6 +28,7 @@ import org.bukkit.entity.Pose;
 import org.bukkit.entity.SpawnCategory;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.MetadataValue;
@@ -58,6 +59,16 @@ import patchbukkit.entity.SetEntityVelocityRequest;
 import patchbukkit.entity.TeleportEntityRequest;
 
 public class PatchBukkitEntity implements Entity {
+
+    @Override
+    public boolean isInWaterOrRainOrBubbleColumn() {
+        return false;
+    }
+
+    @Override
+    public boolean isInWaterOrBubbleColumn() {
+        return false;
+    }
 
     protected final UUID uuid;
     protected final String name;
@@ -233,13 +244,11 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'getPersistentDataContainer'");
     }
 
-    @Override
     public <T> @org.jspecify.annotations.Nullable T getData(Valued<T> type) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getData'");
     }
 
-    @Override
     public <T> @org.jspecify.annotations.Nullable T getDataOrDefault(Valued<? extends T> type,
             @org.jspecify.annotations.Nullable T fallback) {
         // TODO Auto-generated method stub
@@ -329,8 +338,8 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public boolean isOnGround() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isOnGround'");
+        var resp = NativeBridgeFfi.isOnGround(BridgeUtils.convertUuid(this.uuid));
+        return resp != null && resp.getOnGround();
     }
 
     @Override
@@ -435,7 +444,6 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'setVisualFire'");
     }
 
-    @Override
     public boolean isVisualFire() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'isVisualFire'");
@@ -584,22 +592,21 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'eject'");
     }
 
-    @Override
     public @NotNull ItemStack getPickItemStack() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getPickItemStack'");
     }
 
+    private float fallDistance = 0.0f;
+
     @Override
     public float getFallDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getFallDistance'");
+        return this.fallDistance;
     }
 
     @Override
     public void setFallDistance(float distance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setFallDistance'");
+        this.fallDistance = distance;
     }
 
     @Override
@@ -701,7 +708,6 @@ public class PatchBukkitEntity implements Entity {
         return this.visibleByDefault;
     }
 
-    @Override
     public @NotNull Set<Player> getTrackedBy() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getTrackedBy'");
@@ -809,16 +815,16 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'getPose'");
     }
 
+    private boolean sneaking = false;
+
     @Override
     public boolean isSneaking() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isSneaking'");
+        return this.sneaking;
     }
 
     @Override
     public void setSneaking(boolean sneak) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSneaking'");
+        this.sneaking = sneak;
     }
 
     @Override
@@ -827,10 +833,18 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'setPose'");
     }
 
-    @Override
     public boolean hasFixedPose() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'hasFixedPose'");
+    }
+
+    public EntityRemoveEvent.@Nullable Cause getRemoveEventCause() {
+        return null;
+    }
+
+    @Override
+    public io.papermc.paper.entity.@Nullable RemovalReason getRemovalReason() {
+        return null;
     }
 
     @Override
@@ -995,13 +1009,11 @@ public class PatchBukkitEntity implements Entity {
         throw new UnsupportedOperationException("Unimplemented method 'getScoreboardEntryName'");
     }
 
-    @Override
     public void broadcastHurtAnimation(@NotNull Collection<Player> players) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'broadcastHurtAnimation'");
     }
 
-    @Override
     public Source soundSource() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'soundSource'");

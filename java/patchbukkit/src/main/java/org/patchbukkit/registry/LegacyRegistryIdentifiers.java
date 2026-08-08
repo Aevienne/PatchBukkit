@@ -11,26 +11,30 @@ import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 
-
 @Deprecated
 public final class LegacyRegistryIdentifiers {
 
     public static final Map<Class<?>, RegistryKey<?>> CLASS_TO_KEY_MAP;
+    public static final Map<RegistryKey<?>, Class<?>> KEY_TO_CLASS_MAP;
 
     static {
-        final ImmutableMap.Builder<Class<?>, RegistryKey<?>> builder = ImmutableMap.builder();
+        final ImmutableMap.Builder<Class<?>, RegistryKey<?>> classToKey = ImmutableMap.builder();
+        final ImmutableMap.Builder<RegistryKey<?>, Class<?>> keyToClass = ImmutableMap.builder();
         try {
             for (final Field field : RegistryKey.class.getFields()) {
                 if (field.getType() == RegistryKey.class) {
                     // get the legacy type from the RegistryKey generic parameter on the field
                     final Class<?> legacyType = LegacyRegistryIdentifiers.erase(((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0]);
-                    builder.put(legacyType, (RegistryKey<?>) field.get(null));
+                    RegistryKey<?> key = (RegistryKey<?>) field.get(null);
+                    classToKey.put(legacyType, key);
+                    keyToClass.put(key, legacyType);
                 }
             }
         } catch (final ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         }
-        CLASS_TO_KEY_MAP = builder.build();
+        CLASS_TO_KEY_MAP = classToKey.build();
+        KEY_TO_CLASS_MAP = keyToClass.build();
     }
 
     private static Class<?> erase(Type type) {

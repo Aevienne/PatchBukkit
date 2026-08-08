@@ -31,3 +31,38 @@ message PlayerGameModeChangeEvent {
   string new_gamemode = 2;
 }
 
+message PlayerToggleSneakEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  bool is_sneaking = 2;
+}
+
+message PlayerToggleSprintEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  bool is_sprinting = 2;
+}
+
+message PlayerToggleFlightEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  bool is_flying = 2;
+}
+
+message PlayerChatEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  string message = 2;
+  string format = 3;
+}
+
+message PlayerMoveEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  patchbukkit.common.Location from = 2;
+  patchbukkit.common.Location to = 3;
+}
+
+message PlayerInteractEntityEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  patchbukkit.common.UUID target_uuid = 2;
+  string action = 3;
+  bool is_sneaking = 4;
+}
+
+

@@ -90,4 +90,43 @@ public final class CommandSystemTests {
         assertNotNull(found, "CommandMap.getCommand(\"myprefix:pbtestalias\")");
     }
 
+    @ConformanceTest(name = "CommandMap supports WorldEdit double-slash commands", category = TestCategory.COMMAND_SYSTEM)
+    public void testDoubleSlashCommands() {
+        CommandMap map = Bukkit.getServer().getCommandMap();
+        final String[] executedLabel = {null};
+        Command testCmd = new BukkitCommand("//wand", "wand", "//wand", List.of("//set", "set")) {
+            @Override
+            public boolean execute(CommandSender sender, String label, String[] args) {
+                executedLabel[0] = label;
+                return true;
+            }
+        };
+        map.register("worldedit", testCmd);
+
+        CommandSender sender = Bukkit.getConsoleSender();
+
+        // 1. Dispatch with double slash
+        boolean resultDouble = map.dispatch(sender, "//wand");
+        assertTrue(resultDouble, "dispatch() with double slash should return true");
+        assertTrue("//wand".equals(executedLabel[0]), "executed label for //wand");
+
+        // 2. Dispatch with single slash
+        boolean resultSingle = map.dispatch(sender, "/wand");
+        assertTrue(resultSingle, "dispatch() with single slash should return true");
+
+        // 3. Dispatch without slash
+        boolean resultNoSlash = map.dispatch(sender, "wand");
+        assertTrue(resultNoSlash, "dispatch() without slash should return true");
+
+        // 4. Dispatch alias with double slash
+        boolean resultAlias = map.dispatch(sender, "//set");
+        assertTrue(resultAlias, "dispatch() with double slash alias should return true");
+
+        // 5. getCommand lookups
+        assertNotNull(map.getCommand("//wand"), "getCommand(\"//wand\")");
+        assertNotNull(map.getCommand("/wand"), "getCommand(\"/wand\")");
+        assertNotNull(map.getCommand("wand"), "getCommand(\"wand\")");
+        assertNotNull(map.getCommand("//set"), "getCommand(\"//set\")");
+    }
+
 }

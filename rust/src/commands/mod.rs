@@ -131,8 +131,20 @@ impl CommandExecutor for JavaCommandExecutor {
     ) -> pumpkin::command::CommandResult<'a> {
         Box::pin(async move {
             let full_command = match args.get(ARG_ANY) {
-                Some(Arg::Msg(msg)) => format!("/{} {}", self.cmd_name, msg),
-                _ => format!("/{}", self.cmd_name),
+                Some(Arg::Msg(msg)) => {
+                    if self.cmd_name.starts_with('/') {
+                        format!("{} {}", self.cmd_name, msg)
+                    } else {
+                        format!("/{} {}", self.cmd_name, msg)
+                    }
+                }
+                _ => {
+                    if self.cmd_name.starts_with('/') {
+                        self.cmd_name.clone()
+                    } else {
+                        format!("/{}", self.cmd_name)
+                    }
+                }
             };
 
             let (tx, _rx) = oneshot::channel();

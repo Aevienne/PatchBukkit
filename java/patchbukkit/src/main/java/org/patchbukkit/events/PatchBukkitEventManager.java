@@ -20,8 +20,21 @@ import co.aikar.timings.TimedEventExecutor;
 
 import org.jetbrains.annotations.NotNull;
 import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.events.BlockBreakEvent;
+import patchbukkit.events.BlockPlaceEvent;
 import patchbukkit.events.CallEventRequest;
+import patchbukkit.events.PlayerChatEvent;
+import patchbukkit.events.PlayerGameModeChangeEvent;
+import patchbukkit.events.PlayerInteractEvent;
 import patchbukkit.events.PlayerJoinEvent;
+import patchbukkit.events.PlayerInteractEntityEvent;
+import patchbukkit.events.PlayerMoveEvent;
+import patchbukkit.events.PlayerQuitEvent;
+import patchbukkit.events.PlayerToggleFlightEvent;
+import patchbukkit.events.PlayerToggleSneakEvent;
+import patchbukkit.events.PlayerToggleSprintEvent;
+import patchbukkit.events.PluginDisableEvent;
+import patchbukkit.events.PluginEnableEvent;
 import patchbukkit.events.RegisterEventRequest;
 
 import java.lang.reflect.Method;
@@ -56,6 +69,262 @@ public class PatchBukkitEventManager {
                         PlayerJoinEvent.newBuilder()
                             .setJoinMessage(castedEvent.joinMessage().toString())
                             .setPlayerUuid(BridgeUtils.convertUuid(castedEvent.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerQuitEvent":
+                var castedQuit = (org.bukkit.event.player.PlayerQuitEvent) event;
+                String qMsg = castedQuit.quitMessage() != null ? castedQuit.quitMessage().toString() : "";
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerQuit(
+                        PlayerQuitEvent.newBuilder()
+                            .setQuitMessage(qMsg)
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedQuit.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerGameModeChangeEvent":
+                var castedGM = (org.bukkit.event.player.PlayerGameModeChangeEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerGamemodeChange(
+                        PlayerGameModeChangeEvent.newBuilder()
+                            .setNewGamemode(castedGM.getNewGameMode().name())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedGM.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerInteractEvent":
+                var castedInteract = (org.bukkit.event.player.PlayerInteractEvent) event;
+                var block = castedInteract.getClickedBlock();
+                int x = block != null ? block.getX() : 0;
+                int y = block != null ? block.getY() : 0;
+                int z = block != null ? block.getZ() : 0;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerInteract(
+                        PlayerInteractEvent.newBuilder()
+                            .setAction(castedInteract.getAction().name())
+                            .setClickedX(x)
+                            .setClickedY(y)
+                            .setClickedZ(z)
+                            .setBlockFace(castedInteract.getBlockFace().name())
+                            .setHand(castedInteract.getHand() != null ? castedInteract.getHand().name() : "HAND")
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedInteract.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.server.PluginEnableEvent":
+                var castedEnable = (org.bukkit.event.server.PluginEnableEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPluginEnable(
+                        PluginEnableEvent.newBuilder()
+                            .setPluginName(castedEnable.getPlugin().getName()).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.block.SignChangeEvent":
+                var castedSign = (org.bukkit.event.block.SignChangeEvent) event;
+                var signBlock = castedSign.getBlock();
+                var signBuilder = patchbukkit.events.SignChangeEvent.newBuilder()
+                    .setBlockX(signBlock.getX())
+                    .setBlockY(signBlock.getY())
+                    .setBlockZ(signBlock.getZ());
+                if (castedSign.getPlayer() != null) {
+                    signBuilder.setPlayerUuid(BridgeUtils.convertUuid(castedSign.getPlayer().getUniqueId()));
+                }
+                for (String line : castedSign.getLines()) {
+                    signBuilder.addLines(line != null ? line : "");
+                }
+                request.setEvent(patchbukkit.events.Event.newBuilder().setSignChange(signBuilder.build()).build());
+                break;
+            case "org.bukkit.event.block.BlockDamageEvent":
+                var castedDamage = (org.bukkit.event.block.BlockDamageEvent) event;
+                var dmgBlock = castedDamage.getBlock();
+                var dmgBuilder = patchbukkit.events.BlockDamageEvent.newBuilder()
+                    .setBlockX(dmgBlock.getX())
+                    .setBlockY(dmgBlock.getY())
+                    .setBlockZ(dmgBlock.getZ())
+                    .setInstaBreak(castedDamage.getInstaBreak());
+                if (castedDamage.getPlayer() != null) {
+                    dmgBuilder.setPlayerUuid(BridgeUtils.convertUuid(castedDamage.getPlayer().getUniqueId()));
+                }
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockDamage(dmgBuilder.build()).build());
+                break;
+            case "org.bukkit.event.block.BlockIgniteEvent":
+                var castedIgnite = (org.bukkit.event.block.BlockIgniteEvent) event;
+                var igniteBlock = castedIgnite.getBlock();
+                var igniteBuilder = patchbukkit.events.BlockIgniteEvent.newBuilder()
+                    .setBlockX(igniteBlock.getX())
+                    .setBlockY(igniteBlock.getY())
+                    .setBlockZ(igniteBlock.getZ())
+                    .setIgniteCause(castedIgnite.getCause() != null ? castedIgnite.getCause().name() : "FLINT_AND_STEEL");
+                if (castedIgnite.getPlayer() != null) {
+                    igniteBuilder.setPlayerUuid(BridgeUtils.convertUuid(castedIgnite.getPlayer().getUniqueId()));
+                }
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockIgnite(igniteBuilder.build()).build());
+                break;
+            case "org.bukkit.event.block.BlockGrowEvent":
+                var castedGrow = (org.bukkit.event.block.BlockGrowEvent) event;
+                var growBlock = castedGrow.getBlock();
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockGrow(
+                    patchbukkit.events.BlockGrowEvent.newBuilder()
+                        .setBlockX(growBlock.getX())
+                        .setBlockY(growBlock.getY())
+                        .setBlockZ(growBlock.getZ())
+                        .setNewBlockType(castedGrow.getNewState().getType().name()).build()
+                ).build());
+                break;
+            case "org.bukkit.event.block.BlockFormEvent":
+                var castedForm = (org.bukkit.event.block.BlockFormEvent) event;
+                var formBlock = castedForm.getBlock();
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockForm(
+                    patchbukkit.events.BlockFormEvent.newBuilder()
+                        .setBlockX(formBlock.getX())
+                        .setBlockY(formBlock.getY())
+                        .setBlockZ(formBlock.getZ())
+                        .setNewBlockType(castedForm.getNewState().getType().name()).build()
+                ).build());
+                break;
+            case "org.bukkit.event.block.BlockFadeEvent":
+                var castedFade = (org.bukkit.event.block.BlockFadeEvent) event;
+                var fadeBlock = castedFade.getBlock();
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockFade(
+                    patchbukkit.events.BlockFadeEvent.newBuilder()
+                        .setBlockX(fadeBlock.getX())
+                        .setBlockY(fadeBlock.getY())
+                        .setBlockZ(fadeBlock.getZ())
+                        .setNewBlockType(castedFade.getNewState().getType().name()).build()
+                ).build());
+                break;
+            case "org.bukkit.event.server.ServerCommandEvent":
+                var castedCmd = (org.bukkit.event.server.ServerCommandEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setServerCommand(
+                        patchbukkit.events.ServerCommandEvent.newBuilder()
+                            .setSenderName(castedCmd.getSender().getName())
+                            .setCommand(castedCmd.getCommand()).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.server.PluginDisableEvent":
+                var castedDisable = (org.bukkit.event.server.PluginDisableEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPluginDisable(
+                        PluginDisableEvent.newBuilder()
+                            .setPluginName(castedDisable.getPlugin().getName()).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.block.BlockBreakEvent":
+                var castedBreak = (org.bukkit.event.block.BlockBreakEvent) event;
+                var breakBlock = castedBreak.getBlock();
+                var bBuilder = BlockBreakEvent.newBuilder()
+                    .setBlockX(breakBlock.getX())
+                    .setBlockY(breakBlock.getY())
+                    .setBlockZ(breakBlock.getZ())
+                    .setBlockType(breakBlock.getType().name())
+                    .setExp(castedBreak.getExpToDrop())
+                    .setDropItems(castedBreak.isDropItems());
+                if (castedBreak.getPlayer() != null) {
+                    bBuilder.setPlayerUuid(BridgeUtils.convertUuid(castedBreak.getPlayer().getUniqueId()));
+                }
+                request.setEvent(patchbukkit.events.Event.newBuilder().setBlockBreak(bBuilder.build()).build());
+                break;
+            case "org.bukkit.event.block.BlockPlaceEvent":
+                var castedPlace = (org.bukkit.event.block.BlockPlaceEvent) event;
+                var placedBlock = castedPlace.getBlockPlaced();
+                var againstBlock = castedPlace.getBlockAgainst();
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setBlockPlace(
+                        BlockPlaceEvent.newBuilder()
+                            .setBlockX(placedBlock.getX())
+                            .setBlockY(placedBlock.getY())
+                            .setBlockZ(placedBlock.getZ())
+                            .setBlockPlacedType(placedBlock.getType().name())
+                            .setBlockAgainstType(againstBlock.getType().name())
+                            .setCanBuild(castedPlace.canBuild())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedPlace.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerToggleSneakEvent":
+                var castedSneak = (org.bukkit.event.player.PlayerToggleSneakEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerToggleSneak(
+                        PlayerToggleSneakEvent.newBuilder()
+                            .setIsSneaking(castedSneak.isSneaking())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedSneak.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerToggleSprintEvent":
+                var castedSprint = (org.bukkit.event.player.PlayerToggleSprintEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerToggleSprint(
+                        PlayerToggleSprintEvent.newBuilder()
+                            .setIsSprinting(castedSprint.isSprinting())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedSprint.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerToggleFlightEvent":
+                var castedFlight = (org.bukkit.event.player.PlayerToggleFlightEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerToggleFlight(
+                        PlayerToggleFlightEvent.newBuilder()
+                            .setIsFlying(castedFlight.isFlying())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedFlight.getPlayer().getUniqueId())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerMoveEvent":
+                var castedMove = (org.bukkit.event.player.PlayerMoveEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerMove(
+                        PlayerMoveEvent.newBuilder()
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedMove.getPlayer().getUniqueId()))
+                            .setFrom(BridgeUtils.convertLocation(castedMove.getFrom()))
+                            .setTo(BridgeUtils.convertLocation(castedMove.getTo())).build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.player.PlayerInteractEntityEvent":
+            case "org.bukkit.event.player.PlayerInteractAtEntityEvent":
+                var castedInteractEntity = (org.bukkit.event.player.PlayerInteractEntityEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerInteractEntity(
+                        PlayerInteractEntityEvent.newBuilder()
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedInteractEntity.getPlayer().getUniqueId()))
+                            .setTargetUuid(BridgeUtils.convertUuid(castedInteractEntity.getRightClicked().getUniqueId()))
+                            .setAction("INTERACT")
+                            .setIsSneaking(castedInteractEntity.getPlayer().isSneaking())
+                            .build()
+                    ).build()
+                );
+                break;
+            case "org.bukkit.event.entity.EntityDamageByEntityEvent":
+                var castedDamageByEntity = (org.bukkit.event.entity.EntityDamageByEntityEvent) event;
+                if (castedDamageByEntity.getDamager() instanceof org.bukkit.entity.Player damagerPlayer) {
+                    request.setEvent(
+                        patchbukkit.events.Event.newBuilder().setPlayerInteractEntity(
+                            PlayerInteractEntityEvent.newBuilder()
+                                .setPlayerUuid(BridgeUtils.convertUuid(damagerPlayer.getUniqueId()))
+                                .setTargetUuid(BridgeUtils.convertUuid(castedDamageByEntity.getEntity().getUniqueId()))
+                                .setAction("ATTACK")
+                                .setIsSneaking(damagerPlayer.isSneaking())
+                                .build()
+                        ).build()
+                    );
+                }
+                break;
+            case "org.bukkit.event.player.AsyncPlayerChatEvent":
+            case "org.bukkit.event.player.PlayerChatEvent":
+                var castedChat = (org.bukkit.event.player.AsyncPlayerChatEvent) event;
+                request.setEvent(
+                    patchbukkit.events.Event.newBuilder().setPlayerChat(
+                        PlayerChatEvent.newBuilder()
+                            .setMessage(castedChat.getMessage())
+                            .setFormat(castedChat.getFormat())
+                            .setPlayerUuid(BridgeUtils.convertUuid(castedChat.getPlayer().getUniqueId())).build()
                     ).build()
                 );
                 break;
@@ -107,6 +376,7 @@ public class PatchBukkitEventManager {
                         + " to " + registration.getPlugin().getPluginMeta().getDisplayName(),
                     ex
                 );
+                ex.printStackTrace();
             }
         }
     }
@@ -135,6 +405,7 @@ public class PatchBukkitEventManager {
                         + " to " + listener.getPlugin().getPluginMeta().getDisplayName(),
                     ex
                 );
+                ex.printStackTrace();
             }
         }
     }

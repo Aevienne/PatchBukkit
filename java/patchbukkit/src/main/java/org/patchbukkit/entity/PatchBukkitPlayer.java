@@ -83,8 +83,30 @@ public class PatchBukkitPlayer
 
     private final Map<UUID, Set<WeakReference<Plugin>>> invertedVisibilityEntities = new HashMap<>();
 
-   public PatchBukkitPlayer(UUID uuid, String name) {
+    public PatchBukkitPlayer(UUID uuid, String name) {
         super(uuid, name);
+    }
+
+    @Override
+    public void openSign(@NotNull org.bukkit.block.Sign sign) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data, boolean force) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data) {
+    }
+
+    public void unsetFixedPose() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'unsetFixedPose'");
+    }
+
+    public void resetFlyingTicks() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'resetFlyingTicks'");
     }
 
     @Override
@@ -247,7 +269,6 @@ public class PatchBukkitPlayer
         throw new UnsupportedOperationException("Unimplemented method 'getLastSeen'");
     }
 
-    @Override
     public @org.jspecify.annotations.Nullable Location getRespawnLocation(boolean loadLocationAndValidate) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getRespawnLocation'");
@@ -620,16 +641,16 @@ public class PatchBukkitPlayer
         throw new UnsupportedOperationException("Unimplemented method 'performCommand'");
     }
 
+    private boolean sprinting = false;
+
     @Override
     public boolean isSprinting() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isSprinting'");
+        return this.sprinting;
     }
 
     @Override
     public void setSprinting(boolean sprinting) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSprinting'");
+        this.sprinting = sprinting;
     }
 
     @Override
@@ -678,6 +699,16 @@ public class PatchBukkitPlayer
     public void playNote(Location loc, Instrument instrument, Note note) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'playNote'");
+    }
+
+    @Override
+    public void playSound(Location location, Sound sound, float volume, float pitch) {
+        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
+    }
+
+    @Override
+    public void playSound(Location location, String sound, float volume, float pitch) {
+        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
     }
 
     @Override
@@ -1485,8 +1516,16 @@ public class PatchBukkitPlayer
     @Override
     public <T> void spawnParticle(Particle particle, double x, double y, double z, int count, double offsetX,
             double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'spawnParticle'");
+        if (particle == null) return;
+        var request = patchbukkit.world.SpawnParticleRequest.newBuilder()
+            .setWorldUuid(BridgeUtils.convertUuid(this.getWorld().getUID()))
+            .setParticle(particle.name().toLowerCase())
+            .setX(x).setY(y).setZ(z)
+            .setCount(count)
+            .setOffsetX(offsetX).setOffsetY(offsetY).setOffsetZ(offsetZ)
+            .setExtra(extra)
+            .build();
+        NativeBridgeFfi.spawnParticle(request);
     }
 
     @Override
@@ -1503,8 +1542,16 @@ public class PatchBukkitPlayer
 
     @Override
     public Locale locale() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'locale'");
+        String locStr = getLocale();
+        if (locStr != null && !locStr.isEmpty()) {
+            String[] parts = locStr.split("_");
+            if (parts.length >= 2) {
+                return new Locale(parts[0], parts[1]);
+            } else if (parts.length == 1) {
+                return new Locale(parts[0]);
+            }
+        }
+        return Locale.US;
     }
 
     @Override
@@ -1515,8 +1562,13 @@ public class PatchBukkitPlayer
 
     @Override
     public String getLocale() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLocale'");
+        try {
+            var resp = NativeBridgeFfi.getPlayerLocale(BridgeUtils.convertUuid(this.uuid));
+            if (resp != null && resp.getLocale() != null && !resp.getLocale().isEmpty()) {
+                return resp.getLocale();
+            }
+        } catch (Throwable ignored) {}
+        return "en_us";
     }
 
     @Override
@@ -1579,7 +1631,6 @@ public class PatchBukkitPlayer
         throw new UnsupportedOperationException("Unimplemented method 'openBook'");
     }
 
-    @Override
     public void openVirtualSign(Position block, Side side) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'openVirtualSign'");
@@ -1765,7 +1816,6 @@ public class PatchBukkitPlayer
         throw new UnsupportedOperationException("Unimplemented method 'setDeathScreenScore'");
     }
 
-    @Override
     public PlayerGameConnection getConnection() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getConnection'");

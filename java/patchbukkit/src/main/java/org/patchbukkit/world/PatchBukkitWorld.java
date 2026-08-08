@@ -37,6 +37,7 @@ import org.bukkit.util.*;
 import org.patchbukkit.bridge.BridgeUtils;
 import patchbukkit.bridge.NativeBridgeFfi;
 import patchbukkit.world.GetBlockDataRequest;
+import patchbukkit.world.GetWorldInfoRequest;
 import patchbukkit.world.SetBlockDataRequest;
 import patchbukkit.world.SpawnParticleRequest;
 import org.checkerframework.checker.index.qual.Positive;
@@ -169,26 +170,17 @@ public class PatchBukkitWorld
 
     @Override
     public @NotNull Chunk getChunkAt(int x, int z) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getChunkAt'"
-        );
+        return new PatchBukkitChunk(this, x, z);
     }
 
     @Override
     public @NotNull Chunk getChunkAt(int x, int z, boolean generate) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getChunkAt'"
-        );
+        return new PatchBukkitChunk(this, x, z);
     }
 
     @Override
     public @NotNull Chunk getChunkAt(@NotNull Block block) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getChunkAt'"
-        );
+        return new PatchBukkitChunk(this, block.getX() >> 4, block.getZ() >> 4);
     }
 
     @Override
@@ -1203,10 +1195,18 @@ public class PatchBukkitWorld
         float volume,
         float pitch
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'playSound'"
-        );
+        if (location == null || sound == null) return;
+        var patchBukkitSound = (org.patchbukkit.registry.PatchBukkitSound) sound;
+        var request = patchbukkit.sound.PlayerPlaySoundRequest.newBuilder()
+            .setLocation(org.patchbukkit.bridge.BridgeUtils.convertLocation(location))
+            .setSound(
+                patchbukkit.sound.Sound.newBuilder()
+                    .setCategory(category.name())
+                    .setName(patchBukkitSound.getOriginalName())
+            ).setVolume(volume)
+            .setPitch(pitch)
+            .build();
+        NativeBridgeFfi.playerPlaySound(request);
     }
 
     @Override
@@ -1398,10 +1398,16 @@ public class PatchBukkitWorld
         @org.jspecify.annotations.Nullable T data,
         boolean force
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'spawnParticle'"
-        );
+        if (particle == null) return;
+        var request = patchbukkit.world.SpawnParticleRequest.newBuilder()
+            .setWorldUuid(org.patchbukkit.bridge.BridgeUtils.convertUuid(this.getUID()))
+            .setParticle(particle.name().toLowerCase())
+            .setX(x).setY(y).setZ(z)
+            .setCount(count)
+            .setOffsetX(offsetX).setOffsetY(offsetY).setOffsetZ(offsetZ)
+            .setExtra(extra)
+            .build();
+        NativeBridgeFfi.spawnParticle(request);
     }
 
     @Override
@@ -1608,26 +1614,42 @@ public class PatchBukkitWorld
 
     @Override
     public long getSeed() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getSeed'"
-        );
+        try {
+            var info = NativeBridgeFfi.getWorldInfo(GetWorldInfoRequest.newBuilder()
+                    .setWorldUuid(BridgeUtils.convertUuid(this.uuid))
+                    .build());
+            return info.getSeed();
+        } catch (Throwable t) {
+            return 0L;
+        }
     }
 
     @Override
     public int getMinHeight() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMinHeight'"
-        );
+        try {
+            var info = NativeBridgeFfi.getWorldInfo(GetWorldInfoRequest.newBuilder()
+                    .setWorldUuid(BridgeUtils.convertUuid(this.uuid))
+                    .build());
+            return info.getMinHeight();
+        } catch (Throwable t) {
+            return -64;
+        }
     }
 
     @Override
     public int getMaxHeight() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMaxHeight'"
-        );
+        try {
+            var info = NativeBridgeFfi.getWorldInfo(GetWorldInfoRequest.newBuilder()
+                    .setWorldUuid(BridgeUtils.convertUuid(this.uuid))
+                    .build());
+            return info.getMaxHeight();
+        } catch (Throwable t) {
+            return 320;
+        }
+    }
+
+    public int getHeight() {
+        return getMaxHeight() - getMinHeight();
     }
 
     @Override
@@ -1722,7 +1744,6 @@ public class PatchBukkitWorld
     @Override
     public @NotNull List<PoiSearchResult> locateAllPoiInRange(@NotNull Location origin,
             @NotNull Predicate<PoiType> poiTypePredicate, @Positive int radius, @NotNull Occupancy occupancy) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'locateAllPoiInRange'");
+        return Collections.emptyList();
     }
 }

@@ -211,11 +211,34 @@ impl PluginManager {
                 config.commands.clone().unwrap_or_default()
             });
 
-        let libraries = if spigot_skip_libraries {
+        let mut libraries = if spigot_skip_libraries {
             Vec::new()
         } else {
             spigot_libraries
         };
+        if let Some(paper_libs) = &parsed_paper_plugin.libraries {
+            libraries.extend(paper_libs.clone());
+        }
+        if let Some(repos) = &parsed_paper_plugin.repositories {
+            if let Some(arr) = repos.as_array() {
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        libraries.push(format!("repo:{s}"));
+                    } else if let Some(obj) = item.as_object() {
+                        if let Some(u) = obj.get("url").and_then(|v| v.as_str()) {
+                            libraries.push(format!("repo:{u}"));
+                        }
+                    }
+                }
+            } else if let Some(map) = repos.as_object() {
+                for (_, v) in map {
+                    if let Some(s) = v.as_str() {
+                        libraries.push(format!("repo:{s}"));
+                    }
+                }
+            }
+        }
+        libraries.extend(crate::java::jar::read_libraries_from_jar(&jar_path));
 
         let name = parsed_paper_plugin.name.clone();
         let version = parsed_paper_plugin.version.clone();
@@ -262,11 +285,12 @@ impl PluginManager {
         let soft_depends = normalize_names(parsed_spigot_plugin.softdepend.clone());
         let load_before = normalize_names(parsed_spigot_plugin.loadbefore.clone());
         let provides = normalize_names(parsed_spigot_plugin.provides.clone());
-        let libraries = if parsed_spigot_plugin.paper_skip_libraries.unwrap_or(false) {
+        let mut libraries = if parsed_spigot_plugin.paper_skip_libraries.unwrap_or(false) {
             Vec::new()
         } else {
             parsed_spigot_plugin.libraries.clone().unwrap_or_default()
         };
+        libraries.extend(crate::java::jar::read_libraries_from_jar(&jar_path));
 
         let name = parsed_spigot_plugin.name.clone();
         let version = parsed_spigot_plugin.version.clone();
@@ -299,203 +323,30 @@ impl PluginManager {
         Ok(())
     }
 
-    pub fn enable_all_plugins(&mut self, jvm: &Jvm) -> Result<()> {
-        // IMPORTANT: enable trough PluginManager not manually
-        let plugin_manager = jvm.invoke_static(
-            "org.bukkit.Bukkit",
-            "getPluginManager",
-            InvocationArg::empty(),
-        )?;
-        for plugin in self.plugins.values_mut() {
-            if plugin.state != PluginState::Loaded {
-                continue;
-            }
-            let plugin_instance = match plugin.instance.as_ref() {
-                Some(instance) => match jvm.clone_instance(instance) {
-                    Ok(cloned) => cloned,
-                    Err(e) => {
-                        plugin.state = PluginState::Errored;
-                        tracing::error!(
-                            "Failed to clone plugin instance handle for {}: {:?}",
-                            plugin.name,
-                            e
-                        );
-                        continue;
-                    }
-                },
-                None => continue,
-            };
-
-            // Register plugin instance with Java PatchBukkitServer before enabling
-            if let Ok(server) =
-                jvm.invoke_static("org.bukkit.Bukkit", "getServer", InvocationArg::empty())
-            {
-                let _ = jvm.invoke(
-                    &server,
-                    "registerPlugin",
-                    &[InvocationArg::from(
-                        jvm.clone_instance(&plugin_instance).unwrap(),
-                    )],
-                );
-            }
-
-            let result = jvm.invoke(
-                &plugin_manager,
-                "enablePlugin",
-                &[InvocationArg::from(plugin_instance)],
-            );
-
-            match result {
-                Ok(_) => {
-                    plugin.state = PluginState::Enabled;
-                    tracing::info!("Enabled PatchBukkit plugin: {}", plugin.name);
-                }
-                Err(e) => {
-                    plugin.state = PluginState::Errored;
-                    tracing::error!(
-                        "Failed to enable PatchBukkit plugin {}: {:?}",
-                        plugin.name,
-                        e
-                    );
-                }
-            }
-        }
+    pub fn enable_all_plugins(&mut self, _jvm: &Jvm) -> Result<()> {
         Ok(())
     }
 
-    pub fn disable_all_plugins(&mut self, jvm: &Jvm) -> Result<()> {
-        let plugin_manager = jvm.invoke_static(
-            "org.bukkit.Bukkit",
-            "getPluginManager",
-            InvocationArg::empty(),
-        )?;
-        for plugin in self.plugins.values_mut() {
-            let plugin_instance = match plugin.instance.as_ref() {
-                Some(instance) => match jvm.clone_instance(instance) {
-                    Ok(cloned) => cloned,
-                    Err(e) => {
-                        plugin.state = PluginState::Errored;
-                        tracing::error!(
-                            "Failed to clone plugin instance handle for {}: {:?}",
-                            plugin.name,
-                            e
-                        );
-                        continue;
-                    }
-                },
-                None => continue,
-            };
-
-            let result = jvm.invoke(
-                &plugin_manager,
-                "disablePlugin",
-                &[InvocationArg::from(plugin_instance)],
-            );
-
-            match result {
-                Ok(_) => {
-                    plugin.state = PluginState::Disabled;
-                    tracing::info!("Disabled PatchBukkit plugin: {}", plugin.name);
-                }
-                Err(e) => {
-                    plugin.state = PluginState::Disabled;
-                    tracing::error!(
-                        "Failed to disable PatchBukkit plugin {}: {:?}",
-                        plugin.name,
-                        e
-                    );
-                }
-            }
-        }
+    pub fn disable_all_plugins(&mut self, _jvm: &Jvm) -> Result<()> {
         Ok(())
     }
 
     pub async fn instantiate_all_plugins(
         &mut self,
         jvm: &Jvm,
-        server: &Arc<Context>,
-        command_tx: mpsc::Sender<JvmCommand>,
-        command_manager: &mut CommandManager,
+        plugin_folder: &Path,
+        _server: &Arc<Context>,
+        _command_tx: mpsc::Sender<JvmCommand>,
+        _command_manager: &mut CommandManager,
     ) -> Result<()> {
-        let load_order = self.compute_load_order();
-
-        for plugin_key in load_order {
-            let (classpath, libraries) = match self.plugins.get(&plugin_key) {
-                Some(plugin) => (
-                    self.classpath_string_for(plugin),
-                    Self::library_string_for(plugin),
-                ),
-                None => continue,
-            };
-
-            let plugin = match self.plugins.get_mut(&plugin_key) {
-                Some(plugin) => plugin,
-                None => continue,
-            };
-            let plugin_instance = match jvm.invoke_static(
-                "org.patchbukkit.loader.PatchBukkitPluginLoader",
-                "createPlugin",
-                &[
-                    InvocationArg::try_from(&plugin.path.to_string_lossy().to_string())?,
-                    InvocationArg::try_from(&plugin.main_class)?,
-                    InvocationArg::try_from(&classpath)?,
-                    InvocationArg::try_from(&libraries)?,
-                ],
-            ) {
-                Ok(instance) => {
-                    // Check if j4rs created a global reference for a null Java object
-                    if jvm
-                        .invoke(&instance, "toString", InvocationArg::empty())
-                        .is_err()
-                    {
-                        plugin.state = PluginState::Errored;
-                        tracing::error!(
-                            "Failed to instantiate PatchBukkit plugin {}: Java returned null instance",
-                            plugin.name
-                        );
-                        continue;
-                    }
-                    instance
-                }
-                Err(e) => {
-                    plugin.state = PluginState::Errored;
-                    tracing::error!(
-                        "Failed to instantiate PatchBukkit plugin {}: {:?}",
-                        plugin.name,
-                        e
-                    );
-                    continue;
-                }
-            };
-
-            plugin.instance = Some(plugin_instance);
-            for (cmd_name, cmd_data) in &plugin.commands {
-                match command_manager
-                    .register_command(
-                        jvm,
-                        server,
-                        plugin,
-                        cmd_name.clone(),
-                        cmd_data,
-                        command_tx.clone(),
-                    )
-                    .await
-                {
-                    Ok(()) => (),
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to register command {} for plugin {}: {:?}",
-                            cmd_name,
-                            plugin.name,
-                            e
-                        );
-                    }
-                }
-            }
-
-            plugin.state = PluginState::Loaded;
-            tracing::info!("Loaded and registered commands for: {}", plugin.name);
-        }
+        tracing::info!("Bootstrapping Java plugins from {:?}", plugin_folder);
+        let _ = jvm.invoke_static(
+            "org.patchbukkit.loader.PatchBukkitBootstrap",
+            "bootstrapPlugins",
+            &[InvocationArg::try_from(
+                &plugin_folder.to_string_lossy().to_string(),
+            )?],
+        );
         Ok(())
     }
 
@@ -504,6 +355,7 @@ impl PluginManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn resolve_dependency_name(
         &self,
         name: &str,
@@ -517,6 +369,7 @@ impl PluginManager {
         }
     }
 
+    #[allow(dead_code)]
     fn compute_load_order(&mut self) -> Vec<String> {
         let mut provides_map: HashMap<String, String> = HashMap::new();
         for (key, plugin) in &self.plugins {
@@ -640,6 +493,7 @@ impl PluginManager {
         order
     }
 
+    #[allow(dead_code)]
     fn classpath_string_for(&self, plugin: &Plugin) -> String {
         if plugin.classpath_deps.is_empty() {
             return String::new();
@@ -666,9 +520,10 @@ impl PluginManager {
             }
         }
 
-        paths.join(";")
+        paths.join(if cfg!(windows) { ";" } else { ":" })
     }
 
+    #[allow(dead_code)]
     fn library_string_for(plugin: &Plugin) -> String {
         if plugin.libraries.is_empty() {
             return String::new();
@@ -716,6 +571,7 @@ fn dedupe_strings(values: Vec<String>) -> Vec<String> {
     output
 }
 
+#[allow(dead_code)]
 fn add_edge(
     edges: &mut HashMap<String, HashSet<String>>,
     indegree: &mut HashMap<String, usize>,

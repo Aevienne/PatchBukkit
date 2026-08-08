@@ -50,21 +50,38 @@ public final class LibraryResolver {
 
         RepositorySystem system = newRepositorySystem();
         RepositorySystemSession session = newSession(system, baseDir);
-        List<RemoteRepository> repos = List.of(
-            new RemoteRepository.Builder(
-                "papermc",
-                "default",
-                "https://repo.papermc.io/repository/maven-public/"
-            ).build(),
-            new RemoteRepository.Builder(
-                "central",
-                "default",
-                "https://repo1.maven.org/maven2/"
-            ).build()
-        );
+        List<RemoteRepository> repos = new ArrayList<>(List.of(
+            new RemoteRepository.Builder("papermc", "default", "https://repo.papermc.io/repository/maven-public/").build(),
+            new RemoteRepository.Builder("central", "default", "https://repo1.maven.org/maven2/").build(),
+            new RemoteRepository.Builder("jitpack", "default", "https://jitpack.io/").build(),
+            new RemoteRepository.Builder("codemc", "default", "https://repo.codemc.io/repository/maven-public/").build(),
+            new RemoteRepository.Builder("enginehub", "default", "https://maven.enginehub.org/repo/").build(),
+            new RemoteRepository.Builder("sonatype-snapshots", "default", "https://oss.sonatype.org/content/repositories/snapshots/").build(),
+            new RemoteRepository.Builder("sonatype-releases", "default", "https://oss.sonatype.org/content/repositories/releases/").build(),
+            new RemoteRepository.Builder("sponge", "default", "https://repo.spongepowered.org/repository/maven-public/").build(),
+            new RemoteRepository.Builder("xenondevs", "default", "https://repo.xenondevs.xyz/releases").build(),
+            new RemoteRepository.Builder("spigotmc", "default", "https://hub.spigotmc.org/nexus/content/repositories/snapshots/").build(),
+            new RemoteRepository.Builder("miraculixx-snapshots", "default", "https://repo.miraculixx.de/snapshots").build(),
+            new RemoteRepository.Builder("miraculixx-releases", "default", "https://repo.miraculixx.de/releases").build()
+        ));
+
+        Set<String> coordsToResolve = new LinkedHashSet<>();
+        int customRepoIdx = 0;
+        for (String item : unique) {
+            String trimmed = item;
+            if (trimmed.startsWith("repo:")) {
+                trimmed = trimmed.substring(5).trim();
+            }
+            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                customRepoIdx++;
+                repos.add(new RemoteRepository.Builder("custom-repo-" + customRepoIdx, "default", trimmed).build());
+            } else {
+                coordsToResolve.add(trimmed);
+            }
+        }
 
         Set<File> files = new LinkedHashSet<>();
-        for (String coord : unique) {
+        for (String coord : coordsToResolve) {
             try {
                 Dependency dependency = new Dependency(
                     new DefaultArtifact(coord),

@@ -46,6 +46,10 @@ pub mod patchbukkit {
     pub mod world {
         include!(concat!(env!("OUT_DIR"), "/patchbukkit.world.rs"));
     }
+
+    pub mod command {
+        include!(concat!(env!("OUT_DIR"), "/patchbukkit.command.rs"));
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/ffi_init.rs"));

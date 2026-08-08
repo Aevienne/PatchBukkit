@@ -852,51 +852,55 @@ public class PatchBukkitLivingEntity
         throw new UnsupportedOperationException("Unimplemented method 'canUseEquipmentSlot'");
     }
 
-    @Override
     public @NotNull CombatTracker getCombatTracker() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getCombatTracker'");
     }
 
     @Override
+    public void setShieldBlockingDelay(int delay) {
+    }
+
+    @Override
+    public int getShieldBlockingDelay() {
+        return 0;
+    }
+
     public void setWaypointStyle(@Nullable Key key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'setWaypointStyle'");
     }
 
-    @Override
     public void setWaypointColor(@Nullable Color color) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'setWaypointColor'");
     }
 
-    @Override
     public @NotNull Key getWaypointStyle() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getWaypointStyle'");
     }
 
-    @Override
     public @Nullable Color getWaypointColor() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getWaypointColor'");
     }
-    @Override
+
     public void kill(DamageSource damageSource) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'kill'");
     }
-    @Override
+
     public float getSoundVolume() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getSoundVolume'");
     }
-    @Override
+
     public float getSoundPitch() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getSoundPitch'");
     }
-    @Override
+
     public @Nullable Sound getHurtSound(@NotNull DamageSource damageSource) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getHurtSound'");

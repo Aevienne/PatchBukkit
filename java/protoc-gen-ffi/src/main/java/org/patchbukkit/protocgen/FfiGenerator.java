@@ -139,24 +139,34 @@ public class FfiGenerator {
             params.add("long " + toCamelCase(method.getName()) + "Addr");
         }
         sb.append(params).append(") {\n");
+        sb.append("        try {\n");
 
         for (MethodDescriptorProto method : methods) {
             String handleName = toHandleName(method);
             String addrName = toCamelCase(method.getName()) + "Addr";
 
-            sb.append("        ").append(handleName).append(" = LINKER.downcallHandle(\n");
-            sb.append("            MemorySegment.ofAddress(").append(addrName).append("),\n");
-            sb.append("            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ");
+            sb.append("            ").append(handleName).append(" = LINKER.downcallHandle(\n");
+            sb.append("                MemorySegment.ofAddress(").append(addrName).append("),\n");
+            sb.append("                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ");
             sb.append("ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));\n");
         }
+        sb.append("        } catch (Throwable t) {\n");
+        sb.append("            System.err.println(\"[PatchBukkit FFI] Failed init: \" + t.getMessage());\n");
+        sb.append("            t.printStackTrace();\n");
+        sb.append("        }\n");
         sb.append("    }\n\n");
     }
 
     private static void generateInitFreeMethod(StringBuilder sb) {
         sb.append("    public static void initFree(long freeAddr) {\n");
-        sb.append("        freeNative = LINKER.downcallHandle(\n");
-        sb.append("            MemorySegment.ofAddress(freeAddr),\n");
-        sb.append("            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));\n");
+        sb.append("        try {\n");
+        sb.append("            freeNative = LINKER.downcallHandle(\n");
+        sb.append("                MemorySegment.ofAddress(freeAddr),\n");
+        sb.append("                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));\n");
+        sb.append("        } catch (Throwable t) {\n");
+        sb.append("            System.err.println(\"[PatchBukkit FFI] Failed initFree: \" + t.getMessage());\n");
+        sb.append("            t.printStackTrace();\n");
+        sb.append("        }\n");
         sb.append("    }\n\n");
     }
 

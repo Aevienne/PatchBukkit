@@ -4,10 +4,7 @@ use anyhow::Result;
 use j4rs::{Instance, InvocationArg, Jvm};
 use pumpkin::{command::dispatcher::CommandError, plugin::Context};
 use pumpkin_protocol::java::client::play::CommandSuggestion;
-use pumpkin_util::{
-    PermissionLvl,
-    permission::{Permission, PermissionDefault},
-};
+use pumpkin_util::permission::{Permission, PermissionDefault};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -157,24 +154,55 @@ impl CommandManager {
     ) -> Result<()> {
         let command_map = self.get_or_init_command_map(jvm)?;
 
-        let plugin_instance =
-            jvm.clone_instance(plugin.instance.as_ref().expect(
-                "This function should never be called with a plugin that has no instance",
-            ))?;
-        let j_plugin_arg = InvocationArg::from(plugin_instance);
-
-        let j_plugin_cmd = Arc::new(Mutex::new(jvm.invoke_static(
+        let created_cmd = match jvm.invoke_static(
             "org.patchbukkit.command.CommandFactory",
             "create",
-            &[InvocationArg::try_from(&cmd_name)?, j_plugin_arg],
-        )?));
+            &[
+                InvocationArg::try_from(&cmd_name)?,
+                InvocationArg::try_from(&plugin.name)?,
+            ],
+        ) {
+            Ok(inst) => {
+                if jvm.invoke(&inst, "getName", InvocationArg::empty()).is_err() {
+                    tracing::error!(
+                        "Failed to create PluginCommand for {}: Java returned null",
+                        cmd_name
+                    );
+                    return Ok(());
+                }
+                inst
+            }
+            Err(e) => {
+                tracing::error!("Failed to create PluginCommand for {}: {:?}", cmd_name, e);
+                return Ok(());
+            }
+        };
+        let j_plugin_cmd = Arc::new(Mutex::new(created_cmd));
         tracing::info!("Registering Bukkit command: {}", &cmd_name);
         let cmd_aliases: Vec<String> = cmd_data
             .aliases
             .as_ref()
             .map_or_else(Vec::new, |a| a.to_vec());
-        let mut names: Vec<String> = vec![cmd_name.clone()];
-        names.extend(cmd_aliases.clone());
+        let mut raw_names: Vec<String> = vec![cmd_name.clone()];
+        raw_names.extend(cmd_aliases.clone());
+
+        let mut names: Vec<String> = Vec::new();
+        for name in raw_names {
+            let clean = name.trim_start_matches('/').to_string();
+            if !clean.is_empty() {
+                if !names.contains(&clean) {
+                    names.push(clean.clone());
+                }
+                let single = format!("/{}", clean);
+                if !names.contains(&single) {
+                    names.push(single);
+                }
+                let double = format!("//{}", clean);
+                if !names.contains(&double) {
+                    names.push(double);
+                }
+            }
+        }
 
         {
             let cmd_lock = j_plugin_cmd.lock().unwrap();
@@ -228,13 +256,18 @@ impl CommandManager {
                 );
             }
 
+            let j_command_cast = match jvm.cast(&j_plugin_cmd_owned, "org.bukkit.command.Command") {
+                Ok(casted) => casted,
+                Err(_) => j_plugin_cmd_owned,
+            };
+
             jvm.invoke(
                 command_map,
                 "register",
                 &[
                     InvocationArg::try_from(&cmd_name)?,
                     InvocationArg::try_from(&plugin.name)?,
-                    InvocationArg::from(j_plugin_cmd_owned),
+                    InvocationArg::from(j_command_cast),
                 ],
             )?;
         }
@@ -381,14 +414,17 @@ fn build_permission_node(
     cmd_name: &str,
     cmd_data: &config::spigot::Command,
 ) -> (String, PermissionDefault) {
+    let clean = cmd_name.trim_start_matches('/');
     if let Some(permission) = &cmd_data.permission {
-        (
-            permission.clone(),
-            PermissionDefault::Op(PermissionLvl::Two),
-        )
+        let perm_node = if permission.contains(':') {
+            permission.clone()
+        } else {
+            format!("{PATCHBUKKIT_PERMISSION_NAMESPACE}:{permission}")
+        };
+        (perm_node, PermissionDefault::Allow)
     } else {
         (
-            format!("{PATCHBUKKIT_PERMISSION_NAMESPACE}:command.{cmd_name}"),
+            format!("{PATCHBUKKIT_PERMISSION_NAMESPACE}:command.{clean}"),
             PermissionDefault::Allow,
         )
     }
@@ -396,7 +432,7 @@ fn build_permission_node(
 
 #[cfg(test)]
 mod tests {
-    use pumpkin_util::{PermissionLvl, permission::PermissionDefault};
+    use pumpkin_util::permission::PermissionDefault;
 
     use crate::config::spigot::Command;
 
@@ -415,8 +451,8 @@ mod tests {
         assert_eq!(
             build_permission_node("spawn", &command),
             (
-                "simplespawn.spawn".to_string(),
-                PermissionDefault::Op(PermissionLvl::Two)
+                "patchbukkit:simplespawn.spawn".to_string(),
+                PermissionDefault::Allow
             )
         );
     }

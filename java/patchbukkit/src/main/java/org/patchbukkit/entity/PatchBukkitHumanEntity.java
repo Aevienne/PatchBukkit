@@ -50,6 +50,7 @@ import org.checkerframework.checker.index.qual.NonNegative;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
+import org.patchbukkit.PatchBukkitServer;
 import org.patchbukkit.bridge.BridgeUtils;
 import patchbukkit.bridge.NativeBridgeFfi;
 
@@ -67,6 +68,10 @@ public class PatchBukkitHumanEntity
     implements HumanEntity {
     private boolean op;
     protected final PermissibleBase perm = new PermissibleBase(this);
+    protected final PlayerInventory inventory = new org.patchbukkit.inventory.PatchBukkitPlayerInventory(this);
+    protected final EntityEquipment equipment = new org.patchbukkit.inventory.PatchBukkitEntityEquipment(this);
+    private ItemStack cursorItem = ItemStack.empty();
+
 
     public PatchBukkitHumanEntity(UUID uuid,
         String name) {
@@ -74,13 +79,56 @@ public class PatchBukkitHumanEntity
     }
 
     @Override
+    public boolean undiscoverRecipe(@NotNull NamespacedKey key) {
+        return false;
+    }
+
+    @Override
+    public int undiscoverRecipes(@NotNull Collection<NamespacedKey> keys) {
+        return 0;
+    }
+
+    @Override
+    public boolean discoverRecipe(@NotNull NamespacedKey key) {
+        return false;
+    }
+
+    @Override
+    public int discoverRecipes(@NotNull Collection<NamespacedKey> keys) {
+        return 0;
+    }
+
+
+    @Override
     public boolean isOp() {
-        return this.op;
+        if (this.op) {
+            return true;
+        }
+        if (PatchBukkitServer.getInstance().isOp(getUniqueId(), getName())) {
+            this.op = true;
+            if (this.perm != null) {
+                this.perm.recalculatePermissions();
+            }
+            return true;
+        }
+        try {
+            var resp = NativeBridgeFfi.isOp(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null && resp.getIsOp()) {
+                this.op = true;
+                if (this.perm != null) {
+                    this.perm.recalculatePermissions();
+                }
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     @Override
     public void setOp(boolean value) {
         this.op = value;
+        PatchBukkitServer.getInstance().setOperator(getUniqueId(), getName(), value);
         this.perm.recalculatePermissions();
     }
 
@@ -104,23 +152,7 @@ public class PatchBukkitHumanEntity
         return this.perm.hasPermission(perm);
     }
 
-    @Override
-    public double getEyeHeight() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeHeight'");
-    }
 
-    @Override
-    public double getEyeHeight(boolean ignorePose) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeHeight'");
-    }
-
-    @Override
-    public @NotNull Location getEyeLocation() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEyeLocation'");
-    }
 
     @Override
     public @NotNull List<Block> getLineOfSight(@Nullable Set<Material> transparent, int maxDistance) {
@@ -794,71 +826,7 @@ public class PatchBukkitHumanEntity
         throw new UnsupportedOperationException("Unimplemented method 'registerAttribute'");
     }
 
-    @Override
-    public void damage(double amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
 
-    @Override
-    public void damage(double amount, @Nullable Entity source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
-
-    @Override
-    public void damage(double amount, @NotNull DamageSource damageSource) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'damage'");
-    }
-
-    @Override
-    public double getHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getHealth'");
-    }
-
-    @Override
-    public void setHealth(double health) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setHealth'");
-    }
-
-    @Override
-    public void heal(double amount, @NotNull RegainReason reason) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'heal'");
-    }
-
-    @Override
-    public double getAbsorptionAmount() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAbsorptionAmount'");
-    }
-
-    @Override
-    public void setAbsorptionAmount(double amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setAbsorptionAmount'");
-    }
-
-    @Override
-    public double getMaxHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMaxHealth'");
-    }
-
-    @Override
-    public void setMaxHealth(double health) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setMaxHealth'");
-    }
-
-    @Override
-    public void resetMaxHealth() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetMaxHealth'");
-    }
 
     @Override
     public <T extends Projectile> @NotNull T launchProjectile(@NotNull Class<? extends T> projectile,
@@ -881,14 +849,12 @@ public class PatchBukkitHumanEntity
 
     @Override
     public EntityEquipment getEquipment() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEquipment'");
+        return this.equipment;
     }
 
     @Override
     public PlayerInventory getInventory() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getInventory'");
+        return this.inventory;
     }
 
     @Override
@@ -899,9 +865,9 @@ public class PatchBukkitHumanEntity
 
     @Override
     public MainHand getMainHand() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMainHand'");
+        return MainHand.RIGHT;
     }
+
 
     @Override
     public boolean setWindowProperty(Property prop, int value) {
@@ -1009,27 +975,25 @@ public class PatchBukkitHumanEntity
 
     @Override
     public ItemStack getItemInHand() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getItemInHand'");
+        return getInventory().getItemInMainHand();
     }
 
     @Override
     public void setItemInHand(@org.jspecify.annotations.Nullable ItemStack item) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setItemInHand'");
+        getInventory().setItemInMainHand(item);
     }
 
     @Override
     public ItemStack getItemOnCursor() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getItemOnCursor'");
+        return this.cursorItem != null ? this.cursorItem : ItemStack.empty();
     }
 
     @Override
     public void setItemOnCursor(@org.jspecify.annotations.Nullable ItemStack item) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setItemOnCursor'");
+        this.cursorItem = item != null ? item : ItemStack.empty();
     }
+
+
 
     @Override
     public boolean hasCooldown(Material material) {
@@ -1061,25 +1025,21 @@ public class PatchBukkitHumanEntity
         throw new UnsupportedOperationException("Unimplemented method 'hasCooldown'");
     }
 
-    @Override
     public int getCooldown(ItemStack item) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getCooldown'");
     }
 
-    @Override
     public void setCooldown(ItemStack item, int ticks) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'setCooldown'");
     }
 
-    @Override
     public int getCooldown(Key key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getCooldown'");
     }
 
-    @Override
     public void setCooldown(Key key, int ticks) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'setCooldown'");
@@ -1183,17 +1143,7 @@ public class PatchBukkitHumanEntity
         throw new UnsupportedOperationException("Unimplemented method 'getAttackCooldown'");
     }
 
-    @Override
-    public int discoverRecipes(Collection<NamespacedKey> recipes) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'discoverRecipes'");
-    }
 
-    @Override
-    public int undiscoverRecipes(Collection<NamespacedKey> recipes) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'undiscoverRecipes'");
-    }
 
     @Override
     public boolean hasDiscoveredRecipe(NamespacedKey recipe) {

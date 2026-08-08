@@ -19,11 +19,12 @@ import org.bukkit.plugin.PluginLoader;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.UnknownDependencyException;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.patchbukkit.PatchBukkitPluginManager;
 
 @SuppressWarnings({ "deprecation", "removal" })
 public class PatchBukkitPluginLoader implements PluginLoader {
 
-    public static JavaPlugin createPlugin(
+    public static Plugin createPlugin(
         String jarPath,
         String mainClass,
         String extraClasspath,
@@ -40,7 +41,7 @@ public class PatchBukkitPluginLoader implements PluginLoader {
 
             LinkedHashSet<URL> extraUrls = new LinkedHashSet<>();
             if (extraClasspath != null && !extraClasspath.isBlank()) {
-                String[] paths = extraClasspath.split(File.pathSeparator);
+                String[] paths = extraClasspath.split("[;:]");
                 for (String path : paths) {
                     if (path == null || path.isBlank()) {
                         continue;
@@ -76,12 +77,60 @@ public class PatchBukkitPluginLoader implements PluginLoader {
                 );
 
             Class<?> jarClass = Class.forName(mainClass, true, classLoader);
-            return (JavaPlugin) jarClass.getDeclaredConstructor().newInstance();
+            Class<? extends Plugin> pluginClass = jarClass.asSubclass(Plugin.class);
+            Plugin plugin = pluginClass.getDeclaredConstructor().newInstance();
+            if (plugin instanceof JavaPlugin javaPlugin) {
+                classLoader.init(javaPlugin);
+            }
+            try {
+                if (org.bukkit.Bukkit.getPluginManager() instanceof PatchBukkitPluginManager pm) {
+                    pm.registerPlugin(plugin);
+                }
+            } catch (Throwable ignored) {}
+            try {
+                plugin.onLoad();
+            } catch (Throwable t) {
+                System.err.println("[PatchBukkit] Error during onLoad() for " + mainClass + ": " + t.getMessage());
+                t.printStackTrace();
+            }
+            return plugin;
         } catch (Throwable e) {
             System.err.println("[PatchBukkit] Failed to instantiate plugin class " + mainClass + ": " + e.getMessage());
             e.printStackTrace();
-            throw new RuntimeException("Failed to instantiate plugin " + mainClass, e);
+            return null;
         }
+    }
+
+    public static boolean enablePlugin(String pluginName) {
+        try {
+            if (org.bukkit.Bukkit.getPluginManager() instanceof PatchBukkitPluginManager pm) {
+                Plugin p = pm.getPlugin(pluginName);
+                if (p != null) {
+                    pm.enablePlugin(p);
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[PatchBukkit] Failed to enable plugin " + pluginName + ": " + t.getMessage());
+            t.printStackTrace();
+        }
+        return false;
+    }
+
+    public static boolean disablePlugin(String pluginName) {
+        try {
+            if (org.bukkit.Bukkit.getPluginManager() instanceof PatchBukkitPluginManager pm) {
+                Plugin p = pm.getPlugin(pluginName);
+                if (p != null) {
+                    pm.disablePlugin(p);
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[PatchBukkit] Failed to disable plugin " + pluginName + ": " + t.getMessage());
+            t.printStackTrace();
+        }
+        return false;
     }
 
     @Override
@@ -106,14 +155,32 @@ public class PatchBukkitPluginLoader implements PluginLoader {
     @Override
     public void enablePlugin(Plugin plugin) {
         if (plugin instanceof JavaPlugin javaPlugin) {
-            javaPlugin.setEnabled(true);
+            try {
+                javaPlugin.setEnabled(true);
+                org.bukkit.Bukkit.getPluginManager().callEvent(new org.bukkit.event.server.PluginEnableEvent(plugin));
+            } catch (Throwable ex) {
+                org.bukkit.Bukkit.getLogger().log(
+                    java.util.logging.Level.SEVERE,
+                    "Error occurred while enabling " + plugin.getDescription().getFullName() + " (Is it up to date?)",
+                    ex
+                );
+            }
         }
     }
 
     @Override
     public void disablePlugin(Plugin plugin) {
         if (plugin instanceof JavaPlugin javaPlugin) {
-            javaPlugin.setEnabled(false);
+            try {
+                javaPlugin.setEnabled(false);
+                org.bukkit.Bukkit.getPluginManager().callEvent(new org.bukkit.event.server.PluginDisableEvent(plugin));
+            } catch (Throwable ex) {
+                org.bukkit.Bukkit.getLogger().log(
+                    java.util.logging.Level.SEVERE,
+                    "Error occurred while disabling " + plugin.getDescription().getFullName(),
+                    ex
+                );
+            }
         }
     }
 

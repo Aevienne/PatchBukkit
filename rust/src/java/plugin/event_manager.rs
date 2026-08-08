@@ -98,7 +98,7 @@ impl EventManager {
         jvm: &Jvm,
         patch_server: &Instance,
         player: &Arc<Player>,
-        server: &Arc<Server>,
+        _server: &Arc<Server>,
     ) -> Result<()> {
         let j_uuid = jvm
             .invoke_static(
@@ -118,7 +118,20 @@ impl EventManager {
         )?;
 
         let player_permission_level = player.permission_lvl.load();
-        if player_permission_level >= server.basic_config.op_permission_level {
+        let is_op = player_permission_level > pumpkin_util::permission::PermissionLvl::Zero
+            || tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    _server
+                        .data
+                        .operator_config
+                        .read()
+                        .await
+                        .get_entry(&player.gameprofile.id)
+                        .is_some()
+                })
+            });
+
+        if is_op {
             jvm.invoke(
                 &j_player,
                 "setOp",

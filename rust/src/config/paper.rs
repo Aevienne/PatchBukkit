@@ -184,6 +184,14 @@ pub struct PaperPluginYml {
     /// Other plugins this plugin can substitute for
     #[serde(default)]
     pub provides: Option<Vec<String>>,
+
+    /// Libraries declared for runtime resolution
+    #[serde(default)]
+    pub libraries: Option<Vec<String>>,
+
+    /// Repositories declared for runtime resolution
+    #[serde(default)]
+    pub repositories: Option<serde_json::Value>,
 }
 
 impl PaperPluginYml {

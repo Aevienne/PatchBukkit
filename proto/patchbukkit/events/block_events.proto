@@ -1,0 +1,72 @@
+syntax = "proto3";
+package patchbukkit.events;
+
+import "patchbukkit/common/types.proto";
+
+option java_multiple_files = true;
+option java_package = "patchbukkit.events";
+
+message BlockBreakEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  int32 block_x = 2;
+  int32 block_y = 3;
+  int32 block_z = 4;
+  string block_type = 5;
+  uint32 exp = 6;
+  bool drop_items = 7;
+}
+
+message BlockPlaceEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  int32 block_x = 2;
+  int32 block_y = 3;
+  int32 block_z = 4;
+  string block_placed_type = 5;
+  string block_against_type = 6;
+  bool can_build = 7;
+}
+
+message SignChangeEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  int32 block_x = 2;
+  int32 block_y = 3;
+  int32 block_z = 4;
+  repeated string lines = 5;
+}
+
+message BlockDamageEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  int32 block_x = 2;
+  int32 block_y = 3;
+  int32 block_z = 4;
+  bool insta_break = 5;
+}
+
+message BlockIgniteEvent {
+  patchbukkit.common.UUID player_uuid = 1;
+  int32 block_x = 2;
+  int32 block_y = 3;
+  int32 block_z = 4;
+  string ignite_cause = 5;
+}
+
+message BlockGrowEvent {
+  int32 block_x = 1;
+  int32 block_y = 2;
+  int32 block_z = 3;
+  string new_block_type = 4;
+}
+
+message BlockFormEvent {
+  int32 block_x = 1;
+  int32 block_y = 2;
+  int32 block_z = 3;
+  string new_block_type = 4;
+}
+
+message BlockFadeEvent {
+  int32 block_x = 1;
+  int32 block_y = 2;
+  int32 block_z = 3;
+  string new_block_type = 4;
+}

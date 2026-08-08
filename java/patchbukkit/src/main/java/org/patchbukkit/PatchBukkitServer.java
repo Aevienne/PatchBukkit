@@ -60,6 +60,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandException;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Entity;
@@ -105,18 +106,74 @@ import patchbukkit.log.SendLogRequest;
 
 @SuppressWarnings({ "deprecation", "removal", "unchecked" })
 public class PatchBukkitServer implements Server {
+    private static volatile PatchBukkitServer INSTANCE;
 
-    private final String serverName =
-        io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
+    public PatchBukkitServer() {
+        INSTANCE = this;
+        String name = "PatchBukkit";
+        try {
+            name = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
+        } catch (Throwable ignored) {}
+        this.serverName = name;
+    }
+
+    public static PatchBukkitServer getInstance() {
+        if (INSTANCE == null) {
+            synchronized (PatchBukkitServer.class) {
+                if (INSTANCE == null) {
+                    new PatchBukkitServer();
+                }
+            }
+        }
+        return INSTANCE;
+    }
+
+    static {
+        try {
+            Class<?> sharedConstants = Class.forName("net.minecraft.SharedConstants");
+            sharedConstants.getMethod("tryDetectVersion").invoke(null);
+            Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
+            bootstrap.getMethod("bootStrap").invoke(null);
+        } catch (Throwable ignored) {}
+    }
+
+    public static PatchBukkitServer initServer() {
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            logger.log(Level.SEVERE, "Uncaught exception in thread " + thread.getName(), throwable);
+        });
+        PatchBukkitServer server = getInstance();
+        org.bukkit.Bukkit.setServer(server);
+        return server;
+    }
+
+    private final String serverName;
     private final String bukkitVersion = Versioning.getBukkitVersion();
-    private final CommandMap commandMap = new PatchBukkitCommandMap();
-    private final BukkitScheduler scheduler = new PatchBukkitScheduler();
-    private final PatchBukkitPluginManager pluginManager = new PatchBukkitPluginManager(this);
-    private final ServicesManager servicesManager = new PatchBukkitServicesManager();
+    public SimpleCommandMap commandMap = new PatchBukkitCommandMap(this);
+    public BukkitScheduler scheduler = new PatchBukkitScheduler();
+    public PatchBukkitPluginManager pluginManager = new PatchBukkitPluginManager(this);
+    public ServicesManager servicesManager = new PatchBukkitServicesManager();
 
 
     private final Map<UUID, Player> onlinePlayers = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Player> onlinePlayersByName = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final Set<UUID> operatorUuids = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private final Set<String> operatorNames = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    public boolean isOp(UUID uuid, String name) {
+        if (uuid != null && operatorUuids.contains(uuid)) return true;
+        if (name != null && operatorNames.contains(name.toLowerCase())) return true;
+        return false;
+    }
+
+    public void setOperator(UUID uuid, String name, boolean value) {
+        if (uuid != null) {
+            if (value) operatorUuids.add(uuid); else operatorUuids.remove(uuid);
+        }
+        if (name != null) {
+            if (value) operatorNames.add(name.toLowerCase()); else operatorNames.remove(name.toLowerCase());
+        }
+    }
 
     private static final Logger logger = Logger.getLogger("Minecraft");
 
@@ -144,14 +201,16 @@ public class PatchBukkitServer implements Server {
         root.addHandler(new java.util.logging.Handler() {
             @Override
             public void publish(java.util.logging.LogRecord record) {
-                LogLevel logLevel = LEVEL_MAP.getOrDefault(record.getLevel(), LogLevel.INFO);
-                NativeBridgeFfi.sendLog(
-                        SendLogRequest.newBuilder()
-                                .setLevel(logLevel)
-                                .setMessage(record.getMessage())
-                                .setLoggerName(record.getLoggerName())
-                                .build()
-                );
+                try {
+                    LogLevel logLevel = LEVEL_MAP.getOrDefault(record.getLevel(), LogLevel.INFO);
+                    NativeBridgeFfi.sendLog(
+                            SendLogRequest.newBuilder()
+                                    .setLevel(logLevel)
+                                    .setMessage(record.getMessage() != null ? record.getMessage() : "")
+                                    .setLoggerName(record.getLoggerName() != null ? record.getLoggerName() : "")
+                                    .build()
+                    );
+                } catch (Throwable ignored) {}
             }
             @Override public void flush() {}
             @Override public void close() {}
@@ -185,6 +244,7 @@ public class PatchBukkitServer implements Server {
     }
 
     private final Messenger messenger = new org.patchbukkit.messaging.PatchBukkitMessenger();
+    private final HelpMap helpMap = new org.patchbukkit.help.PatchBukkitHelpMap();
     private File pluginsFolder = new File("plugins");
 
     private static void validateChannel(String channel) {
@@ -590,7 +650,6 @@ public class PatchBukkitServer implements Server {
         );
     }
 
-    @Override
     public @NotNull World getRespawnWorld() {
         var worlds = getWorlds();
         if (!worlds.isEmpty()) {
@@ -601,7 +660,6 @@ public class PatchBukkitServer implements Server {
         );
     }
 
-    @Override
     public void setRespawnWorld(@NotNull World world) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException(
@@ -904,7 +962,6 @@ public class PatchBukkitServer implements Server {
         );
     }
 
-    @Override
     public @NotNull ServerConfiguration getServerConfig() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException(
@@ -949,28 +1006,23 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull OfflinePlayer getOfflinePlayer(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOfflinePlayer'"
-        );
+        Player online = getPlayer(name);
+        if (online != null) return online;
+        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(null, name);
     }
 
     @Override
-    public @Nullable OfflinePlayer getOfflinePlayerIfCached(
-        @NotNull String name
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOfflinePlayerIfCached'"
-        );
+    public @Nullable OfflinePlayer getOfflinePlayerIfCached(@NotNull String name) {
+        Player online = getPlayer(name);
+        if (online != null) return online;
+        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(null, name);
     }
 
     @Override
     public @NotNull OfflinePlayer getOfflinePlayer(@NotNull UUID id) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOfflinePlayer'"
-        );
+        Player online = getPlayer(id);
+        if (online != null) return online;
+        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(id, null);
     }
 
     @Override
@@ -1066,10 +1118,14 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull Set<OfflinePlayer> getOperators() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOperators'"
-        );
+        Set<OfflinePlayer> ops = new java.util.HashSet<>();
+        for (UUID uuid : operatorUuids) {
+            ops.add(getOfflinePlayer(uuid));
+        }
+        for (String name : operatorNames) {
+            ops.add(getOfflinePlayer(name));
+        }
+        return ops;
     }
 
     @Override
@@ -1088,7 +1144,6 @@ public class PatchBukkitServer implements Server {
         );
     }
 
-    @Override
     public boolean forcesDefaultGameMode() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException(
@@ -1134,10 +1189,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull HelpMap getHelpMap() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getHelpMap'"
-        );
+        return this.helpMap;
     }
 
     @Override
@@ -1252,10 +1304,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public boolean isPrimaryThread() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isPrimaryThread'"
-        );
+        return true;
     }
 
     @Override
@@ -1317,10 +1366,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull ItemFactory getItemFactory() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getItemFactory'"
-        );
+        return org.patchbukkit.inventory.PatchBukkitItemFactory.INSTANCE;
     }
 
     @Override
@@ -1475,18 +1521,12 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public double@NotNull [] getTPS() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getTPS'"
-        );
+        return new double[] { 20.0, 20.0, 20.0 };
     }
 
     @Override
     public long@NotNull [] getTickTimes() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getTickTimes'"
-        );
+        return new long[100];
     }
 
     @Override
@@ -1554,33 +1594,96 @@ public class PatchBukkitServer implements Server {
         BlockType type = null;
         if (material != null) {
             type = material.asBlockType();
+            if (type == null && material.isBlock()) {
+                type = org.patchbukkit.registry.PatchBukkitBlockType.create(material);
+            }
             Preconditions.checkArgument(type != null, "Provided material must be a block");
+        } else if (data != null) {
+            String matName = data.trim();
+            int stateIndex = matName.indexOf('[');
+            if (stateIndex != -1) {
+                matName = matName.substring(0, stateIndex).trim();
+            }
+            if (matName.startsWith("minecraft:")) {
+                matName = matName.substring("minecraft:".length());
+            }
+            Material matched = null;
+            try {
+                matched = Material.valueOf(matName.toUpperCase(java.util.Locale.ROOT));
+            } catch (Throwable ignored) {}
+
+            if (matched == null || matched.isLegacy()) {
+                Material m = Material.matchMaterial(matName, false);
+                if (m != null && !m.isLegacy()) {
+                    matched = m;
+                }
+            }
+
+            if (matched == null) {
+                matched = Material.matchMaterial(matName);
+            }
+
+            if (matched != null && matched.isLegacy()) {
+                matched = PatchBukkitLegacy.fromLegacy(matched);
+            }
+
+            if (matched != null && (matched.isBlock() || (!matched.isLegacy() && matched.getKey() != null))) {
+                material = matched;
+                type = matched.asBlockType();
+                if (type == null) {
+                    type = org.patchbukkit.registry.PatchBukkitBlockType.create(matched);
+                }
+            } else {
+                throw new IllegalArgumentException("Block name " + matName + " was not recognized");
+            }
         }
 
-        return PatchBukkitBlockData.newData(type, data);
+        return PatchBukkitBlockData.newData(material, type, data);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T extends Keyed> @Nullable Tag<T> getTag(
         @NotNull String registry,
         @NotNull NamespacedKey tag,
         @NotNull Class<T> clazz
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getTag'"
-        );
+        if (registry == null || tag == null || clazz == null) {
+            return null;
+        }
+        try {
+            for (java.lang.reflect.Field field : org.bukkit.Tag.class.getFields()) {
+                if (Tag.class.isAssignableFrom(field.getType())) {
+                    Tag<?> val = (Tag<?>) field.get(null);
+                    if (val != null && val.getKey().equals(tag)) {
+                        return (Tag<T>) val;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return new org.patchbukkit.tag.PatchBukkitTag<>(tag);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T extends Keyed> @NotNull Iterable<Tag<T>> getTags(
         @NotNull String registry,
         @NotNull Class<T> clazz
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getTags'"
-        );
+        List<Tag<T>> result = new ArrayList<>();
+        try {
+            for (java.lang.reflect.Field field : org.bukkit.Tag.class.getFields()) {
+                if (Tag.class.isAssignableFrom(field.getType())) {
+                    Tag<?> val = (Tag<?>) field.get(null);
+                    if (val != null) {
+                        result.add((Tag<T>) val);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return result;
     }
 
     @Override
@@ -1719,18 +1822,12 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public int getCurrentTick() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getCurrentTick'"
-        );
+        return (int) (System.currentTimeMillis() / 50);
     }
 
     @Override
     public boolean isStopping() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isStopping'"
-        );
+        return false;
     }
 
     @Override
@@ -1894,9 +1991,28 @@ public class PatchBukkitServer implements Server {
         );
     }
 
-    @Override
     public @NotNull Path getLevelDirectory() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getLevelDirectory'");
+    }
+
+    @Override
+    public int getAmbientSpawnLimit() {
+        return 15;
+    }
+
+    @Override
+    public int getWaterUndergroundCreatureSpawnLimit() {
+        return 5;
+    }
+
+    @Override
+    public int getWaterAmbientSpawnLimit() {
+        return 20;
+    }
+
+    @Override
+    public int getWaterAnimalSpawnLimit() {
+        return 5;
     }
 }

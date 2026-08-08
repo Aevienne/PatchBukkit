@@ -271,7 +271,6 @@ public class PatchBukkitBlock implements Block {
         return breakNaturally(tool, triggerEffect, dropExperience, true);
     }
 
-    @Override
     public boolean breakNaturally(@Nullable ItemStack tool, boolean triggerEffect, boolean dropExperience, boolean dropAsItem) {
         setType(Material.AIR);
         return true;
@@ -395,43 +394,36 @@ public class PatchBukkitBlock implements Block {
 
     @Override
     public String translationKey() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'translationKey'");
+        return getType().getTranslationKey();
     }
 
     @Override
     public byte getData() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getData'");
+        return 0;
     }
 
     @Override
     public byte getLightLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLightLevel'");
+        return 15;
     }
 
     @Override
     public byte getLightFromSky() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLightFromSky'");
+        return 15;
     }
 
     @Override
     public byte getLightFromBlocks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLightFromBlocks'");
+        return 0;
     }
 
     @Override
     public boolean isValidTool(@NotNull ItemStack tool) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isValidTool'");
+        return true;
     }
 
     @Override
     public @NotNull Chunk getChunk() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getChunk'");
+        return this.world.getChunkAt(this);
     }
 }

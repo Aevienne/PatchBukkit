@@ -119,3 +119,64 @@ pub fn ffi_native_bridge_teleport_entity_impl(request: TeleportEntityRequest) ->
         });
     })
 }
+
+pub fn ffi_native_bridge_is_on_ground_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::entity::IsOnGroundResponse> {
+    with_player(Some(&request), |player| {
+        let on_ground = player
+            .living_entity
+            .entity
+            .on_ground
+            .load(std::sync::atomic::Ordering::Relaxed);
+        crate::proto::patchbukkit::entity::IsOnGroundResponse { on_ground }
+    })
+}
+
+pub fn ffi_native_bridge_get_player_locale_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::entity::GetPlayerLocaleResponse> {
+    with_player(Some(&request), |player| {
+        let config = player.config.load();
+        crate::proto::patchbukkit::entity::GetPlayerLocaleResponse {
+            locale: config.locale.clone(),
+        }
+    })
+}
+
+pub fn ffi_native_bridge_is_op_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::entity::IsOpResponse> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let player_uuid = uuid::Uuid::parse_str(&request.value).ok()?;
+
+    let is_op = with_player(Some(&request), |player| {
+        let perm_lvl = player.permission_lvl.load();
+        let op_lvl = ctx.plugin_context.server.basic_config.op_permission_level;
+        let mut is_op = perm_lvl >= op_lvl || perm_lvl > pumpkin_util::PermissionLvl::Zero;
+
+        if !is_op {
+            let op_config = tokio::task::block_in_place(|| {
+                ctx.runtime.block_on(async {
+                    ctx.plugin_context.server.data.operator_config.read().await
+                })
+            });
+            if op_config.get_entry(&player_uuid).is_some() {
+                is_op = true;
+            }
+        }
+
+        is_op
+    })
+    .unwrap_or_else(|| {
+        let op_config = tokio::task::block_in_place(|| {
+            ctx.runtime.block_on(async {
+                ctx.plugin_context.server.data.operator_config.read().await
+            })
+        });
+        op_config.get_entry(&player_uuid).is_some()
+    });
+
+    Some(crate::proto::patchbukkit::entity::IsOpResponse { is_op })
+}
+

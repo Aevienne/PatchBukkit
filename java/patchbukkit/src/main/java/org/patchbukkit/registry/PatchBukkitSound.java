@@ -13,11 +13,19 @@ public class PatchBukkitSound implements Sound {
     private final int protocolId;
 
     public PatchBukkitSound(String soundName, int protocolId) {
-        this.namespacedKey = new NamespacedKey(NamespacedKey.MINECRAFT, soundName);
-        this.adventureKey = Key.key(Key.MINECRAFT_NAMESPACE, soundName);
+        if (soundName == null) soundName = "unknown";
+        String keyPath = soundName.startsWith("minecraft:") ? soundName.substring(10) : soundName;
+        keyPath = keyPath.toLowerCase(java.util.Locale.ROOT);
+
+        NamespacedKey key = NamespacedKey.fromString(keyPath);
+        if (key == null) {
+            key = NamespacedKey.minecraft(keyPath.replaceAll("[^a-z0-9/._-]", "_"));
+        }
+        this.namespacedKey = key;
+        this.adventureKey = Key.key(key.namespace(), key.value());
         this.protocolId = protocolId;
         this.originalName = soundName;
-        this.enumName = soundName.toUpperCase().replace('.', '_');
+        this.enumName = key.value().toUpperCase(java.util.Locale.ROOT).replace('.', '_').replace('-', '_').replace('/', '_');
     }
 
     public String getOriginalName() {

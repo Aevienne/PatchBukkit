@@ -1,6 +1,7 @@
 plugins {
     `java-library`
     id("com.google.protobuf") version "0.10.0"
+    id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
 }
 
 val protobufVersion = "4.35.1"
@@ -38,6 +39,7 @@ tasks.named("generateProto") {
 }
 
 repositories {
+    mavenCentral()
     maven {
         name = "papermc"
         url = uri("https://repo.papermc.io/repository/maven-public/")
@@ -45,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.papermc.paper:paper-api:26.2.build.87-stable")
+    paperweight.paperDevBundle("26.2.build.111-stable")
     implementation("net.sf.jopt-simple:jopt-simple:6.0-alpha-3")
     implementation("io.github.astonbitecode:j4rs:0.25.2")
     implementation("org.apache.maven:maven-resolver-provider:3.9.6")
@@ -55,6 +57,12 @@ dependencies {
     implementation("org.apache.maven.resolver:maven-resolver-util:1.9.18")
     implementation("com.google.protobuf:protobuf-java:$protobufVersion")
     implementation("org.slf4j:slf4j-jdk14:2.0.16")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform()
 }
 
 java {
@@ -73,12 +81,12 @@ tasks.withType<JavaCompile> {
 
 tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    dependsOn(configurations.runtimeClasspath)
+    dependsOn(configurations.compileClasspath)
 
     from({
-        configurations.runtimeClasspath.get()
-            .filter { it.name.endsWith(".jar") }
-            .map { zipTree(it) }
+        configurations.compileClasspath.get().map { file ->
+            if (file.isDirectory) file else zipTree(file)
+        }
     })
 
     exclude(

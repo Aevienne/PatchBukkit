@@ -4,20 +4,18 @@ import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 import org.bukkit.Keyed;
 import org.bukkit.Registry;
-import org.bukkit.Sound;
 import org.jspecify.annotations.Nullable;
 
-import com.google.gson.JsonObject;
 import patchbukkit.registry.GetRegistryDataResponse;
 import patchbukkit.registry.RegistryType;
 
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-public class PatchBukkitRegistryAccess implements RegistryAccess {
+public class PatchBukkitRegistryAccess extends io.papermc.paper.registry.PaperRegistryAccess {
     private static final Map<RegistryKey<?>, Registry<?>> instances = new ConcurrentHashMap<>();
 
     /**
@@ -27,7 +25,7 @@ public class PatchBukkitRegistryAccess implements RegistryAccess {
     private static final Map<RegistryKey<?>, RegistryFactory<?, ?>> FACTORIES = Map.of(
         RegistryKey.SOUND_EVENT, new RegistryFactory<>(
             RegistryType.SOUND_EVENT,
-            response -> response.getSoundEvent().getSoundEventsList(),
+            response -> (response != null && response.hasSoundEvent()) ? response.getSoundEvent().getSoundEventsList() : Collections.emptyList(),
             data -> new PatchBukkitSound(
                 data.getName(),
                 data.getId()
@@ -41,39 +39,43 @@ public class PatchBukkitRegistryAccess implements RegistryAccess {
             Function<P, B> factory
     ) {}
 
-    @Override
     public <T extends Keyed> @Nullable Registry<T> getRegistry(Class<T> type) {
         final RegistryKey<T> registryKey = byType(type);
         return this.getRegistry(registryKey);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    @Override
     public <T extends Keyed> Registry<T> getRegistry(RegistryKey<T> registryKey) {
         if (registryKey == null) return null;
 
-        return (Registry<T>) instances.computeIfAbsent(registryKey, key -> {
-            RegistryFactory<?, ?> factoryEntry = FACTORIES.get(key);
-            if (factoryEntry != null) {
-                return buildRegistry((RegistryKey) key, factoryEntry);
-            }
-            // Return an empty registry for unsupported types
-            return PatchBukkitRegistry.empty((RegistryKey) key);
-        });
-    }
+        Registry<?> existing = instances.get(registryKey);
+        if (existing != null) {
+            return (Registry<T>) existing;
+        }
 
-    @SuppressWarnings("unchecked")
-    private static <P, B extends Keyed> PatchBukkitRegistry<P, B> buildRegistry(RegistryKey<B> key, RegistryFactory<P, B> factory) {
-        return new PatchBukkitRegistry<>(
-                factory.registryType(),
-                factory.extractor(),
-                factory.factory(),
-                key
-        );
+        PatchBukkitRegistry reg = new PatchBukkitRegistry(registryKey);
+        Registry<?> winner = instances.putIfAbsent(registryKey, reg);
+        if (winner != null) {
+            return (Registry<T>) winner;
+        }
+
+        try {
+            RegistryFactory<?, ?> factoryEntry = FACTORIES.get(registryKey);
+            if (factoryEntry != null) {
+                reg.initialize(factoryEntry.registryType(), factoryEntry.extractor(), factoryEntry.factory());
+            } else {
+                reg.initialize(null, null, null);
+            }
+        } catch (Throwable t) {
+            // Ignore failure during registry initialization safely
+        }
+
+        return (Registry<T>) reg;
     }
 
     @SuppressWarnings({"unchecked", "deprecation"})
     public static <T extends Keyed> @Nullable RegistryKey<T> byType(final Class<T> type) {
+        if (type == null) return null;
         return (RegistryKey<T>) LegacyRegistryIdentifiers.CLASS_TO_KEY_MAP.get(type);
     }
 }

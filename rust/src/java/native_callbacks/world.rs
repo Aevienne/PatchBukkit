@@ -21,10 +21,15 @@ pub fn ffi_native_bridge_get_block_data_impl(
     let pos = pumpkin_util::math::position::BlockPos::new(request.x, request.y, request.z);
 
     let state_id = world.get_block_state(&pos).id;
+    let block = pumpkin_data::Block::from_state_id(state_id);
+    let key = block.name;
+    let block_state = if key.starts_with("minecraft:") {
+        key.to_string()
+    } else {
+        format!("minecraft:{key}")
+    };
 
-    Some(GetBlockDataResponse {
-        block_state: format!("minecraft:block_{state_id}"),
-    })
+    Some(GetBlockDataResponse { block_state })
 }
 
 pub fn ffi_native_bridge_set_block_data_impl(request: SetBlockDataRequest) -> Option<()> {
@@ -40,11 +45,24 @@ pub fn ffi_native_bridge_set_block_data_impl(request: SetBlockDataRequest) -> Op
         .or_else(|| worlds.first().cloned())?;
     let pos = pumpkin_util::math::position::BlockPos::new(request.x, request.y, request.z);
 
+    let block_state_str = request.block_state;
+    let clean_key = block_state_str
+        .split('[')
+        .next()
+        .unwrap_or(&block_state_str)
+        .trim_start_matches("minecraft:");
+
+    let state_id = if let Some(b) = pumpkin_data::Block::from_registry_key(clean_key) {
+        b.default_state.id
+    } else {
+        pumpkin_data::BlockStateId::new_or_air(0)
+    };
+
     ctx.runtime.spawn(async move {
         world
             .set_block_state(
                 &pos,
-                pumpkin_data::BlockStateId::new_or_air(1),
+                state_id,
                 pumpkin::world::BlockFlags::NOTIFY_ALL,
             )
             .await;
@@ -130,4 +148,30 @@ pub fn ffi_native_bridge_set_world_border_impl(
     wb.portal_teleport_boundary = border_data.max_center_coordinate;
 
     Some(())
+}
+
+pub fn ffi_native_bridge_get_world_info_impl(
+    request: crate::proto::patchbukkit::world::GetWorldInfoRequest,
+) -> Option<crate::proto::patchbukkit::world::GetWorldInfoResponse> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let uuid_str = &request.world_uuid.as_ref()?.value;
+    let world_uuid = uuid::Uuid::parse_str(uuid_str).ok()?;
+
+    let worlds = ctx.plugin_context.server.worlds.load_full();
+    let world = worlds
+        .iter()
+        .find(|w| w.uuid == world_uuid)
+        .cloned()
+        .or_else(|| worlds.first().cloned())?;
+
+    let min_height = world.dimension.min_y;
+    let height = world.dimension.height;
+    let max_height = min_height + height;
+
+    Some(crate::proto::patchbukkit::world::GetWorldInfoResponse {
+        min_height,
+        max_height,
+        height,
+        seed: 0,
+    })
 }

@@ -54,5 +54,18 @@ message SetGamemodeRequest {
   int32 gamemode = 2;
 }
 
+message IsOnGroundResponse {
+  bool on_ground = 1;
+}
+
+message GetPlayerLocaleResponse {
+  string locale = 1;
+}
+
+message IsOpResponse {
+  bool is_op = 1;
+}
+
+
 
 

@@ -7,16 +7,56 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.bukkit.Location;
+import org.bukkit.Server;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandException;
-import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.SimpleCommandMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.command.RegisterCommandRequest;
 
-public class PatchBukkitCommandMap implements CommandMap {
-    // We use Command as the value to support both PluginCommand and vanilla commands
-    private final Map<String, Command> knownCommands = new HashMap<>();
+public class PatchBukkitCommandMap extends SimpleCommandMap {
+
+    public PatchBukkitCommandMap(Server server) {
+        super(server != null ? server : org.bukkit.Bukkit.getServer(), new HashMap<>());
+    }
+
+    public PatchBukkitCommandMap() {
+        super(org.bukkit.Bukkit.getServer(), new HashMap<>());
+    }
+
+    private String cleanLabel(String label) {
+        if (label == null) return "";
+        String clean = label.trim();
+        while (clean.startsWith("/")) {
+            clean = clean.substring(1).trim();
+        }
+        return clean.toLowerCase();
+    }
+
+    private void registerVariants(String key, Command command) {
+        if (key == null || key.isEmpty()) return;
+        key = key.toLowerCase().trim();
+        if (!knownCommands.containsKey(key)) {
+            knownCommands.put(key, command);
+        }
+        String clean = cleanLabel(key);
+        if (!clean.isEmpty()) {
+            if (!knownCommands.containsKey(clean)) {
+                knownCommands.put(clean, command);
+            }
+            String single = "/" + clean;
+            if (!knownCommands.containsKey(single)) {
+                knownCommands.put(single, command);
+            }
+            String doubleSlash = "//" + clean;
+            if (!knownCommands.containsKey(doubleSlash)) {
+                knownCommands.put(doubleSlash, command);
+            }
+        }
+    }
 
     @Override
     public void registerAll(@NotNull String fallbackPrefix, @NotNull List<Command> commands) {
@@ -27,26 +67,45 @@ public class PatchBukkitCommandMap implements CommandMap {
 
     @Override
     public boolean register(@NotNull String label, @NotNull String fallbackPrefix, @NotNull Command command) {
+        if (label == null || fallbackPrefix == null || command == null) {
+            return false;
+        }
         label = label.toLowerCase().trim();
         fallbackPrefix = fallbackPrefix.toLowerCase().trim();
-        
-        // 1. Register under the direct label if not taken
+        String clean = cleanLabel(label);
+
         boolean registeredDirectly = false;
-        if (!knownCommands.containsKey(label)) {
-            knownCommands.put(label, command);
+        if (!knownCommands.containsKey(label) && !knownCommands.containsKey(clean)) {
             registeredDirectly = true;
         }
 
-        // 2. Always register under the fallback prefix (pluginname:label)
-        knownCommands.put(fallbackPrefix + ":" + label, command);
+        registerVariants(label, command);
+        registerVariants(fallbackPrefix + ":" + label, command);
+        if (!clean.isEmpty()) {
+            registerVariants(clean, command);
+            registerVariants(fallbackPrefix + ":" + clean, command);
+        }
 
-        // 3. Register aliases
-        for (String alias : command.getAliases()) {
-            alias = alias.toLowerCase().trim();
-            if (!knownCommands.containsKey(alias)) {
-                knownCommands.put(alias, command);
+        if (command.getAliases() != null) {
+            for (String alias : command.getAliases()) {
+                if (alias == null) continue;
+                alias = alias.toLowerCase().trim();
+                registerVariants(alias, command);
+                registerVariants(fallbackPrefix + ":" + alias, command);
             }
-            knownCommands.put(fallbackPrefix + ":" + alias, command);
+        }
+
+        try {
+            List<String> aliasesList = command.getAliases() != null ? command.getAliases() : Collections.emptyList();
+            String desc = command.getDescription() != null ? command.getDescription() : "";
+            RegisterCommandRequest request = RegisterCommandRequest.newBuilder()
+                    .setCmdName(label)
+                    .addAllAliases(aliasesList)
+                    .setDescription(desc)
+                    .setPluginName(fallbackPrefix)
+                    .build();
+            NativeBridgeFfi.registerCommand(request);
+        } catch (Throwable ignored) {
         }
 
         return registeredDirectly;
@@ -54,32 +113,34 @@ public class PatchBukkitCommandMap implements CommandMap {
 
     @Override
     public boolean register(@NotNull String fallbackPrefix, @NotNull Command command) {
+        if (command == null) return false;
         return register(command.getName(), fallbackPrefix, command);
     }
 
     @Override
     public boolean dispatch(@NotNull CommandSender sender, @NotNull String cmdLine) throws CommandException {
         if (cmdLine == null) return false;
-        String cleanLine = cmdLine.trim();
-        while (cleanLine.startsWith("/")) {
-            cleanLine = cleanLine.substring(1).trim();
-        }
-        if (cleanLine.isEmpty()) return false;
+        String rawLine = cmdLine.trim();
+        if (rawLine.isEmpty()) return false;
 
-        String[] split = cleanLine.split("\\s+");
+        String[] split = rawLine.split("\\s+");
         if (split.length == 0) return false;
 
-        String sentLabel = split[0].toLowerCase();
-        Command command = knownCommands.get(sentLabel);
+        String rawLabel = split[0].toLowerCase();
+        Command command = knownCommands.get(rawLabel);
+
+        if (command == null) {
+            String clean = cleanLabel(rawLabel);
+            command = knownCommands.get(clean);
+        }
 
         if (command == null) {
             return false; // Command not found
         }
 
         try {
-            // Extract arguments (everything after the label)
             String[] args = Arrays.copyOfRange(split, 1, split.length);
-            return command.execute(sender, sentLabel, args);
+            return command.execute(sender, rawLabel, args);
         } catch (Exception ex) {
             throw new CommandException("Unhandled exception executing '" + cmdLine + "'", ex);
         }
@@ -92,7 +153,13 @@ public class PatchBukkitCommandMap implements CommandMap {
 
     @Override
     public @Nullable Command getCommand(@NotNull String name) {
-        return knownCommands.get(name.toLowerCase());
+        if (name == null) return null;
+        String lower = name.toLowerCase().trim();
+        Command cmd = knownCommands.get(lower);
+        if (cmd == null) {
+            cmd = knownCommands.get(cleanLabel(lower));
+        }
+        return cmd;
     }
 
     @Override
@@ -108,17 +175,16 @@ public class PatchBukkitCommandMap implements CommandMap {
     @Override
     public @Nullable List<String> tabComplete(@NotNull CommandSender sender, @NotNull String cmdLine, @Nullable Location location) {
         if (cmdLine == null) return new ArrayList<>();
-        String cleanLine = cmdLine.trim();
-        while (cleanLine.startsWith("/")) {
-            cleanLine = cleanLine.substring(1).trim();
-        }
-        String[] split = cleanLine.split(" ", -1);
+        String rawLine = cmdLine.trim();
+        String[] split = rawLine.split(" ", -1);
         if (split.length == 0) return new ArrayList<>();
 
         String label = split[0].toLowerCase();
         Command command = knownCommands.get(label);
+        if (command == null) {
+            command = knownCommands.get(cleanLabel(label));
+        }
 
-        // If typing the first word, return matching command names
         if (split.length == 1) {
             List<String> completions = new ArrayList<>();
             for (String key : knownCommands.keySet()) {
@@ -127,7 +193,6 @@ public class PatchBukkitCommandMap implements CommandMap {
             return completions;
         }
 
-        // Otherwise, delegate to the specific command's tab completer
         if (command != null) {
             String[] args = Arrays.copyOfRange(split, 1, split.length);
             return command.tabComplete(sender, label, args, location);

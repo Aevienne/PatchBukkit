@@ -43,6 +43,10 @@ pub mod world;
 pub use world::*;
 
 pub mod itemstack;
+pub use itemstack::*;
+
+pub mod command;
+pub use command::*;
 
 static CALLBACK_CONTEXT: OnceLock<CallbackContext> = OnceLock::new();
 
