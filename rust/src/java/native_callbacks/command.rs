@@ -1,9 +1,6 @@
 use pumpkin_util::permission::{Permission, PermissionDefault};
 
-use crate::{
-    commands::init_java_command,
-    proto::patchbukkit::command::RegisterCommandRequest,
-};
+use crate::{commands::init_java_command, proto::patchbukkit::command::RegisterCommandRequest};
 
 pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) -> Option<()> {
     let context = super::CALLBACK_CONTEXT.get()?;
@@ -37,12 +34,7 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             }
         }
 
-        let node = init_java_command(
-            cmd_name.clone(),
-            command_tx,
-            names,
-            description,
-        );
+        let node = init_java_command(cmd_name.clone(), command_tx, names, description);
 
         let clean_perm = cmd_name.trim_start_matches('/');
         let permission = format!("patchbukkit:command.{clean_perm}");

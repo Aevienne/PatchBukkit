@@ -74,7 +74,7 @@ jobs:
             - run: rustup component add clippy
             - uses: Swatinem/rust-cache@v2
             - name: Download JAR
-              uses: actions/download-artifact@v7
+              uses: actions/download-artifact@v8
               with:
                   name: patchbukkit-jar
                   path: java/patchbukkit/build/libs/
@@ -170,7 +170,7 @@ jobs:
                   Windows) cp rust/target/release/*.dll "dist/patchbukkit-${{ runner.arch }}-${{ runner.os }}.dll" ;;
                   esac
             - name: Export artifacts
-              uses: actions/upload-artifact@v6
+              uses: actions/upload-artifact@v7
               with:
                   name: patchbukkit-${{ runner.arch }}-${{ runner.os }}
                   compression-level: 9

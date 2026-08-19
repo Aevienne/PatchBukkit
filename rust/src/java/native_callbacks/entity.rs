@@ -157,9 +157,8 @@ pub fn ffi_native_bridge_is_op_impl(
 
         if !is_op {
             let op_config = tokio::task::block_in_place(|| {
-                ctx.runtime.block_on(async {
-                    ctx.plugin_context.server.data.operator_config.read().await
-                })
+                ctx.runtime
+                    .block_on(async { ctx.plugin_context.server.data.operator_config.read().await })
             });
             if op_config.get_entry(&player_uuid).is_some() {
                 is_op = true;
@@ -170,13 +169,11 @@ pub fn ffi_native_bridge_is_op_impl(
     })
     .unwrap_or_else(|| {
         let op_config = tokio::task::block_in_place(|| {
-            ctx.runtime.block_on(async {
-                ctx.plugin_context.server.data.operator_config.read().await
-            })
+            ctx.runtime
+                .block_on(async { ctx.plugin_context.server.data.operator_config.read().await })
         });
         op_config.get_entry(&player_uuid).is_some()
     });
 
     Some(crate::proto::patchbukkit::entity::IsOpResponse { is_op })
 }
-

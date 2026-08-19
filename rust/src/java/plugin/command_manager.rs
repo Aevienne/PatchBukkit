@@ -163,7 +163,10 @@ impl CommandManager {
             ],
         ) {
             Ok(inst) => {
-                if jvm.invoke(&inst, "getName", InvocationArg::empty()).is_err() {
+                if jvm
+                    .invoke(&inst, "getName", InvocationArg::empty())
+                    .is_err()
+                {
                     tracing::error!(
                         "Failed to create PluginCommand for {}: Java returned null",
                         cmd_name

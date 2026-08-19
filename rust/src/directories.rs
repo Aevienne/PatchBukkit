@@ -32,8 +32,19 @@ pub fn setup_directories(server: &Context) -> Result<PatchBukkitDirectories, Str
     let patchbukkit_jar_dest = jassets.join("patchbukkit.jar");
 
     let candidates = [
-        server_root.join("java").join("patchbukkit").join("build").join("libs").join("patchbukkit.jar"),
-        server_root.join("patchbukkit").join("java").join("patchbukkit").join("build").join("libs").join("patchbukkit.jar"),
+        server_root
+            .join("java")
+            .join("patchbukkit")
+            .join("build")
+            .join("libs")
+            .join("patchbukkit.jar"),
+        server_root
+            .join("patchbukkit")
+            .join("java")
+            .join("patchbukkit")
+            .join("build")
+            .join("libs")
+            .join("patchbukkit.jar"),
     ];
 
     for candidate in &candidates {

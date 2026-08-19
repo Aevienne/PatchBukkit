@@ -60,11 +60,7 @@ pub fn ffi_native_bridge_set_block_data_impl(request: SetBlockDataRequest) -> Op
 
     ctx.runtime.spawn(async move {
         world
-            .set_block_state(
-                &pos,
-                state_id,
-                pumpkin::world::BlockFlags::NOTIFY_ALL,
-            )
+            .set_block_state(&pos, state_id, pumpkin::world::BlockFlags::NOTIFY_ALL)
             .await;
     });
 

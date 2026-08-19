@@ -27,11 +27,11 @@ walkdir = "2"
 zip = "8.6"
 
 anyhow = "1.0"
-uuid = "1.24.0"
+uuid = "1.24.1"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde-saphyr = "1.0.1"
+serde-saphyr = "1.1.0"
 
 rand = { git = "https://github.com/rust-random/rand"}
 prost = "0.14"

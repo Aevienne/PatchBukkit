@@ -22,7 +22,10 @@ pub fn discover_jar_files(plugin_folder: &Path) -> impl Iterator<Item = PathBuf>
                 .canonicalize()
                 .map_err(|e| tracing::error!("Canonicalize error: {e:?}"))
                 .ok()?;
-            if path.components().any(|c| c.as_os_str() == "patchbukkit-libs") {
+            if path
+                .components()
+                .any(|c| c.as_os_str() == "patchbukkit-libs")
+            {
                 None
             } else {
                 Some(path)
@@ -71,53 +74,53 @@ pub fn read_libraries_from_jar<P: AsRef<Path>>(jar_path: P) -> Vec<String> {
     // 1. paper-libraries.json
     if let Ok(mut file) = archive.by_name("paper-libraries.json") {
         let mut content = String::new();
-        if file.read_to_string(&mut content).is_ok() {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(repos) = val.get("repositories") {
-                    if let Some(map) = repos.as_object() {
-                        for (_, v) in map {
-                            if let Some(url) = v.as_str() {
-                                let repo_entry = format!("repo:{url}");
-                                if !libraries.contains(&repo_entry) {
-                                    libraries.push(repo_entry);
-                                }
+        if file.read_to_string(&mut content).is_ok()
+            && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
+        {
+            if let Some(repos) = val.get("repositories") {
+                if let Some(map) = repos.as_object() {
+                    for (_, v) in map {
+                        if let Some(url) = v.as_str() {
+                            let repo_entry = format!("repo:{url}");
+                            if !libraries.contains(&repo_entry) {
+                                libraries.push(repo_entry);
                             }
                         }
-                    } else if let Some(arr) = repos.as_array() {
-                        for item in arr {
-                            if let Some(url) = item.as_str() {
-                                let repo_entry = format!("repo:{url}");
-                                if !libraries.contains(&repo_entry) {
-                                    libraries.push(repo_entry);
-                                }
-                            } else if let Some(obj) = item.as_object() {
-                                if let Some(url) = obj.get("url").and_then(|u| u.as_str()) {
-                                    let repo_entry = format!("repo:{url}");
-                                    if !libraries.contains(&repo_entry) {
-                                        libraries.push(repo_entry);
-                                    }
-                                }
+                    }
+                } else if let Some(arr) = repos.as_array() {
+                    for item in arr {
+                        if let Some(url) = item.as_str() {
+                            let repo_entry = format!("repo:{url}");
+                            if !libraries.contains(&repo_entry) {
+                                libraries.push(repo_entry);
+                            }
+                        } else if let Some(obj) = item.as_object()
+                            && let Some(url) = obj.get("url").and_then(|u| u.as_str())
+                        {
+                            let repo_entry = format!("repo:{url}");
+                            if !libraries.contains(&repo_entry) {
+                                libraries.push(repo_entry);
                             }
                         }
                     }
                 }
+            }
 
-                if let Some(deps) = val.get("dependencies") {
-                    if let Some(arr) = deps.as_array() {
-                        for item in arr {
-                            if let Some(s) = item.as_str() {
-                                if !libraries.contains(&s.to_string()) {
-                                    libraries.push(s.to_string());
-                                }
-                            }
+            if let Some(deps) = val.get("dependencies") {
+                if let Some(arr) = deps.as_array() {
+                    for item in arr {
+                        if let Some(s) = item.as_str()
+                            && !libraries.contains(&s.to_string())
+                        {
+                            libraries.push(s.to_string());
                         }
-                    } else if let Some(map) = deps.as_object() {
-                        for (k, v) in map {
-                            if let Some(ver) = v.as_str() {
-                                let coord = format!("{k}:{ver}");
-                                if !libraries.contains(&coord) {
-                                    libraries.push(coord);
-                                }
+                    }
+                } else if let Some(map) = deps.as_object() {
+                    for (k, v) in map {
+                        if let Some(ver) = v.as_str() {
+                            let coord = format!("{k}:{ver}");
+                            if !libraries.contains(&coord) {
+                                libraries.push(coord);
                             }
                         }
                     }
@@ -132,10 +135,11 @@ pub fn read_libraries_from_jar<P: AsRef<Path>>(jar_path: P) -> Vec<String> {
         if file.read_to_string(&mut content).is_ok() {
             for line in content.lines() {
                 let trimmed = line.trim();
-                if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                    if !libraries.contains(&trimmed.to_string()) {
-                        libraries.push(trimmed.to_string());
-                    }
+                if !trimmed.is_empty()
+                    && !trimmed.starts_with('#')
+                    && !libraries.contains(&trimmed.to_string())
+                {
+                    libraries.push(trimmed.to_string());
                 }
             }
         }
@@ -159,7 +163,8 @@ mod tests {
             let file = File::create(&jar_path).unwrap();
             let mut zip = zip::ZipWriter::new(file);
 
-            zip.start_file("paper-libraries.json", SimpleFileOptions::default()).unwrap();
+            zip.start_file("paper-libraries.json", SimpleFileOptions::default())
+                .unwrap();
             let json = r#"{
                 "repositories": {
                     "miraculixx": "https://repo.miraculixx.de"

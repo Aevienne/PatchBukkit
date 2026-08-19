@@ -22,10 +22,7 @@ use tokio::sync::{
 use crate::{
     config::patchbukkit::PatchBukkitConfig,
     java::{
-        jvm::{
-            commands::JvmCommand,
-            worker::JvmWorker,
-        },
+        jvm::{commands::JvmCommand, worker::JvmWorker},
         resources::setup_j4rs,
     },
 };
@@ -41,8 +38,6 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
     config_path.push("patchbukkit.config.toml");
     let config = PatchBukkitConfig::get_or_create(config_path)
         .map_err(|e| format!("Failed to setup PatchBukkit config: {e}"))?;
-
-
 
     // Manage embedded resources
     setup_j4rs(&dirs.j4rs).map_err(|e| format!("Failed to setup J4RS: {e}"))?;

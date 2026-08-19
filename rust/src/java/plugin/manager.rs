@@ -224,10 +224,10 @@ impl PluginManager {
                 for item in arr {
                     if let Some(s) = item.as_str() {
                         libraries.push(format!("repo:{s}"));
-                    } else if let Some(obj) = item.as_object() {
-                        if let Some(u) = obj.get("url").and_then(|v| v.as_str()) {
-                            libraries.push(format!("repo:{u}"));
-                        }
+                    } else if let Some(obj) = item.as_object()
+                        && let Some(u) = obj.get("url").and_then(|v| v.as_str())
+                    {
+                        libraries.push(format!("repo:{u}"));
                     }
                 }
             } else if let Some(map) = repos.as_object() {

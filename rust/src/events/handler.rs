@@ -348,7 +348,6 @@ impl PatchBukkitEvent for pumpkin::plugin::player::player_move::PlayerMoveEvent 
         }
         Some(())
     }
-
 }
 
 impl PatchBukkitEvent for pumpkin::plugin::player::player_chat::PlayerChatEvent {
