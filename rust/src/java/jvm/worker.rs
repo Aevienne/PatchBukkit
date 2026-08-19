@@ -287,6 +287,7 @@ impl JvmWorker {
         let jvm_args = InitArgsBuilder::new()
             .version(JNIVersion::V21)
             .option(format!("-Djava.class.path={classpath}"))
+            .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("--enable-native-access=ALL-UNNAMED")
             .option("--enable-final-field-mutation=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
