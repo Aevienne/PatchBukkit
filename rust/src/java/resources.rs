@@ -8,39 +8,49 @@ use anyhow::Result;
 use rust_embed::Embed;
 
 #[derive(Embed)]
-#[folder = "resources/"]
+#[folder = "resources/jassets/"]
 pub struct Resources;
 
-pub fn setup_j4rs(j4rs_folder: &Path) -> Result<()> {
-    sync_embedded_resources(j4rs_folder)?;
-    cleanup_stale_files(j4rs_folder);
+pub fn setup_resources(resources_folder: &Path) -> Result<()> {
+    sync_embedded_resources(resources_folder)?;
+    cleanup_stale_files(resources_folder);
 
     Ok(())
 }
 
-fn cleanup_stale_files(j4rs_folder: &Path) {
+fn cleanup_stale_files(resources_folder: &Path) {
     let embedded_paths: HashSet<PathBuf> = Resources::iter()
         .map(|p| PathBuf::from(p.to_string()))
         .collect();
 
-    for entry in walkdir::WalkDir::new(j4rs_folder)
+    for entry in walkdir::WalkDir::new(resources_folder)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if let Ok(rel_path) = path.strip_prefix(j4rs_folder)
+        if let Ok(rel_path) = path.strip_prefix(resources_folder)
             && !embedded_paths.contains(rel_path)
         {
             tracing::warn!("Removing stale embedded file: {}", rel_path.display());
             let _ = fs::remove_file(path);
         }
     }
+
+    // Clean up any empty subdirectories in resources_folder
+    for entry in walkdir::WalkDir::new(resources_folder)
+        .contents_first(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir() && e.path() != resources_folder)
+    {
+        let _ = fs::remove_dir(entry.path());
+    }
 }
 
-pub fn sync_embedded_resources(j4rs_folder: &Path) -> Result<()> {
+pub fn sync_embedded_resources(resources_folder: &Path) -> Result<()> {
     for resource_path_str in Resources::iter() {
-        let resource_path = j4rs_folder.join(resource_path_str.to_string());
+        let resource_path = resources_folder.join(resource_path_str.to_string());
         let resource = Resources::get(&resource_path_str).unwrap();
 
         if resource_path.exists() {

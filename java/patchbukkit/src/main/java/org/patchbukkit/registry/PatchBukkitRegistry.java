@@ -30,7 +30,10 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
     private final ThreadLocal<Set<NamespacedKey>> inFallback = ThreadLocal.withInitial(HashSet::new);
 
     private final RegistryKey<B> registryKey;
-    private boolean initialized = false;
+    private final RegistryType registryType;
+    private final Function<GetRegistryDataResponse, List<P>> extractor;
+    private final Function<P, B> factory;
+    private volatile boolean initialized = false;
 
     public PatchBukkitRegistry(RegistryKey<B> registryKey) {
         this(null, null, null, registryKey);
@@ -51,19 +54,49 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
             RegistryKey<B> registryKey
     ) {
         this.registryKey = registryKey;
-        if (registryType != null || extractor != null || factory != null) {
-            initialize(registryType, extractor, factory);
+        this.registryType = registryType;
+        this.extractor = extractor;
+        this.factory = factory;
+    }
+
+    public void ensureInitialized() {
+        if (initialized) return;
+        synchronized (this) {
+            if (initialized) return;
+            initialized = true;
+            initializeInternal();
         }
     }
 
     @SuppressWarnings("unchecked")
-    public synchronized void initialize(
-            RegistryType registryType,
-            Function<GetRegistryDataResponse, List<P>> extractor,
-            Function<P, B> factory
-    ) {
-        if (initialized) return;
-        initialized = true;
+    private void initializeInternal() {
+        if (registryType != null) {
+            try {
+                GetRegistryDataRequest request = GetRegistryDataRequest.newBuilder()
+                        .setRegistry(registryType)
+                        .build();
+
+                GetRegistryDataResponse response = NativeBridgeFfi.getRegistryData(request);
+                if (response != null && extractor != null) {
+                    List<P> protoEntries = extractor.apply(response);
+                    if (protoEntries != null) {
+                        for (P protoEntry : protoEntries) {
+                            if (protoEntry == null) continue;
+                            try {
+                                B value = factory != null ? factory.apply(protoEntry) : null;
+                                if (value != null && value.getKey() != null) {
+                                    entries.put(value.getKey(), value);
+                                }
+                            } catch (Throwable t) {
+                                // Skip invalid entry safely
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                // Ignore FFI or RPC failure safely
+            }
+        }
 
         // Auto-discover pre-registered Paper/Bukkit constants for this registry
         if (registryKey != null) {
@@ -89,40 +122,14 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
                         }
                     } catch (Throwable ignored) {}
                 }
+            } else if (RegistryKey.SOUND_EVENT.equals(registryKey) || "sound_event".equalsIgnoreCase(registryKey.key().value())) {
+                // Do not reflectively autoDiscover Sound.class because Sound.<clinit> depends on Registry.SOUNDS!
             } else {
                 Class<B> valueClass = (Class<B>) LegacyRegistryIdentifiers.KEY_TO_CLASS_MAP.get(registryKey);
                 if (valueClass != null) {
                     Map<NamespacedKey, B> discovered = autoDiscover(valueClass);
                     entries.putAll(discovered);
                 }
-            }
-        }
-
-        if (registryType != null) {
-            try {
-                GetRegistryDataRequest request = GetRegistryDataRequest.newBuilder()
-                        .setRegistry(registryType)
-                        .build();
-
-                GetRegistryDataResponse response = NativeBridgeFfi.getRegistryData(request);
-                if (response != null && extractor != null) {
-                    List<P> protoEntries = extractor.apply(response);
-                    if (protoEntries != null) {
-                        for (P protoEntry : protoEntries) {
-                            if (protoEntry == null) continue;
-                            try {
-                                B value = factory.apply(protoEntry);
-                                if (value != null && value.getKey() != null) {
-                                    entries.put(value.getKey(), value);
-                                }
-                            } catch (Throwable t) {
-                                // Skip invalid entry safely
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                // Ignore FFI or RPC failure safely
             }
         }
     }
@@ -162,6 +169,7 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
         if (key == null) {
             return null;
         }
+        ensureInitialized();
         B value = entries.get(key);
         if (value != null) {
             return value;
@@ -228,11 +236,13 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
 
     @Override
     public boolean hasTag(TagKey<B> key) {
+        ensureInitialized();
         return key != null && tags.containsKey(key.key().asString());
     }
 
     @Override
     public @NonNull Tag<B> getTag(TagKey<B> key) {
+        ensureInitialized();
         PatchBukkitTag<B> tag = tags.get(key.key().asString());
         if (tag == null) {
             throw new NoSuchElementException("Unknown tag: " + key.key().asString());
@@ -246,25 +256,30 @@ public class PatchBukkitRegistry<P, B extends Keyed> implements Registry<B> {
 
     @Override
     public @NonNull Collection<Tag<B>> getTags() {
+        ensureInitialized();
         return Collections.unmodifiableCollection(tags.values());
     }
 
     @Override
     public @NonNull Stream<B> stream() {
+        ensureInitialized();
         return entries.values().stream();
     }
 
     public @NonNull Stream<NamespacedKey> keyStream() {
+        ensureInitialized();
         return entries.keySet().stream();
     }
 
     @Override
     public int size() {
+        ensureInitialized();
         return entries.size();
     }
 
     @Override
     public @NonNull Iterator<B> iterator() {
+        ensureInitialized();
         return Collections.unmodifiableCollection(entries.values()).iterator();
     }
 }

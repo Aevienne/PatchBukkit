@@ -13,17 +13,13 @@ pub mod java;
 pub mod proto;
 
 use directories::setup_directories;
-use java::jar::discover_jar_files;
-use tokio::sync::{
-    mpsc::{self, Receiver},
-    oneshot,
-};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     config::patchbukkit::PatchBukkitConfig,
     java::{
         jvm::{commands::JvmCommand, worker::JvmWorker},
-        resources::setup_j4rs,
+        resources::setup_resources,
     },
 };
 
@@ -40,77 +36,91 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
         .map_err(|e| format!("Failed to setup PatchBukkit config: {e}"))?;
 
     // Manage embedded resources
-    setup_j4rs(&dirs.j4rs).map_err(|e| format!("Failed to setup J4RS: {e}"))?;
+    setup_resources(&dirs.jassets).map_err(|e| format!("Failed to setup resources: {e}"))?;
 
-    {
+    let runtime_handle = plugin.runtime.handle().clone();
+    let command_tx = plugin.command_tx.clone();
+    let server_clone = server.clone();
+
+    // Run JVM initialization and Java plugin bootstrap in a background task
+    // on PatchBukkit's dedicated runtime so Pumpkin's main startup is never blocked.
+    plugin.runtime.spawn(async move {
+        tracing::info!("Initializing JVM in background...");
+
+        // 1. Initialize JVM
         let (tx, rx) = oneshot::channel();
-        plugin
-            .command_tx
+        if let Err(e) = command_tx
             .send(JvmCommand::Initialize {
-                j4rs_path: dirs.j4rs,
+                jassets_path: dirs.jassets.clone(),
                 respond_to: tx,
-                context: server.clone(),
-                command_tx: plugin.command_tx.clone(),
+                context: server_clone.clone(),
+                runtime_handle,
+                command_tx: command_tx.clone(),
                 config,
             })
             .await
-            .map_err(|e| format!("Failed to send command to initialize J4RS: {e}"))?;
-        rx.await
-            .map_err(|e| format!("Unable to receive response from J4RS initialization: {e}"))?
-            .map_err(|e| format!("Failed to initialize all plugins: {e}"))?;
-    }
+        {
+            tracing::error!("Failed to send command to initialize JVM: {e}");
+            return;
+        }
 
-    {
+        match rx.await {
+            Ok(Ok(())) => tracing::info!("JVM initialization completed successfully"),
+            Ok(Err(e)) => {
+                tracing::error!("Failed to initialize JVM: {e}");
+                return;
+            }
+            Err(e) => {
+                tracing::error!("Unable to receive response from JVM initialization: {e}");
+                return;
+            }
+        }
+
+        // 2. Instantiate all Java plugins
         let (tx, rx) = oneshot::channel();
-        plugin
-            .command_tx
+        if let Err(e) = command_tx
             .send(JvmCommand::InstantiateAllPlugins {
                 plugins_dir: dirs.plugins.clone(),
                 respond_to: tx,
-                server: server.clone(),
-                command_tx: plugin.command_tx.clone(),
+                server: server_clone.clone(),
+                command_tx: command_tx.clone(),
             })
             .await
-            .map_err(|e| format!("Failed to send command to instantiate plugins: {e}"))?;
-        rx.await
-            .map_err(|e| format!("Unable to receive response from instantiate plugins: {e}"))?
-            .map_err(|e| format!("Failed to instantiate all plugins: {e}"))?;
-    }
+        {
+            tracing::error!("Failed to send command to instantiate plugins: {e}");
+            return;
+        }
 
-    {
+        match rx.await {
+            Ok(Ok(())) => tracing::info!("Java plugins instantiated successfully"),
+            Ok(Err(e)) => {
+                tracing::error!("Failed to instantiate Java plugins: {e}");
+                return;
+            }
+            Err(e) => {
+                tracing::error!("Unable to receive response from instantiate plugins: {e}");
+                return;
+            }
+        }
+
+        // 3. Enable all Java plugins
         let (tx, rx) = oneshot::channel();
-        plugin
-            .command_tx
+        if let Err(e) = command_tx
             .send(JvmCommand::EnableAllPlugins { respond_to: tx })
             .await
-            .map_err(|e| format!("Failed to send command to enable all plugins: {e}"))?;
-        rx.await
-            .map_err(|e| format!("Unable to receive response from enable all plugins: {e}"))?
-            .map_err(|e| format!("Failed to enable all plugins: {e}"))?;
-    };
+        {
+            tracing::error!("Failed to send command to enable all plugins: {e}");
+            return;
+        }
 
-    // Register Bukkit plugin loader with Pumpkin so Bukkit/Paper plugins appear in Pumpkin's native /plugins command
-    let bukkit_loader = Arc::new(crate::java::plugin::loader::BukkitPluginLoader);
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| format!("Failed to build Tokio runtime: {e}"))?;
-
-    let server_ref = server.clone();
-    let jar_paths: Vec<_> = discover_jar_files(&dirs.plugins).collect();
-    rt.block_on(async move {
-        server_ref
-            .plugin_manager
-            .add_loader(&server_ref.server, bukkit_loader)
-            .await;
-        for jar_path in &jar_paths {
-            let _ = server_ref
-                .plugin_manager
-                .try_load_plugin(&server_ref.server, jar_path)
-                .await;
+        match rx.await {
+            Ok(Ok(())) => tracing::info!("PatchBukkit background initialization complete"),
+            Ok(Err(e)) => tracing::error!("Failed to enable all plugins: {e}"),
+            Err(e) => tracing::error!("Unable to receive response from enable all plugins: {e}"),
         }
     });
 
+    tracing::info!("PatchBukkit loaded successfully");
     Ok(())
 }
 
@@ -155,25 +165,36 @@ async fn on_unload(&self, server: Arc<Context>) -> Result<(), String> {
 #[plugin_impl]
 pub struct PatchBukkitPlugin {
     pub command_tx: mpsc::Sender<JvmCommand>,
+    pub runtime: Arc<tokio::runtime::Runtime>,
 }
 
 impl PatchBukkitPlugin {
     #[must_use]
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel(100);
+        let runtime = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_name("patchbukkit-worker")
+                .enable_all()
+                .build()
+                .expect("Failed to create PatchBukkit Tokio runtime"),
+        );
 
-        #[tokio::main]
-        pub async fn jvm_thread_task(rx: Receiver<JvmCommand>) {
-            JvmWorker::new(rx).attach_thread().await;
-        }
+        let (tx, rx) = mpsc::channel(4096);
 
+        let runtime_clone = runtime.clone();
         std::thread::Builder::new()
             .name("patchbukkit-jvm-worker".to_string())
             .spawn(move || {
-                jvm_thread_task(rx);
+                runtime_clone.block_on(async move {
+                    JvmWorker::new(rx).attach_thread().await;
+                });
             })
             .unwrap();
-        Self { command_tx: tx }
+        Self {
+            command_tx: tx,
+            runtime,
+        }
     }
 }
 

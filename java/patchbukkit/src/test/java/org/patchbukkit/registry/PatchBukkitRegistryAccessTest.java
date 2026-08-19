@@ -56,6 +56,15 @@ public class PatchBukkitRegistryAccessTest {
     }
 
     @Test
+    public void testSoundClassInitialization() {
+        assertDoesNotThrow(() -> {
+            org.bukkit.Sound sound = org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
+            assertNotNull(sound, "Sound constant must initialize successfully without ExceptionInInitializerError");
+            assertNotNull(sound.getKey(), "Sound key must not be null");
+        });
+    }
+
+    @Test
     public void testInspectBlockTypeAndDataMethods() {
         System.out.println("=== BLOCK TYPE METHODS ===");
         for (java.lang.reflect.Method m : org.bukkit.block.BlockType.class.getMethods()) {

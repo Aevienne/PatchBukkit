@@ -33,6 +33,7 @@ import patchbukkit.events.BlockIgniteEvent;
 import patchbukkit.events.ServerCommandEvent;
 import patchbukkit.events.SignChangeEvent;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class PatchBukkitEventFactory {
@@ -44,9 +45,20 @@ public class PatchBukkitEventFactory {
             Event event = Event.parseFrom(data);
             return createEvent(event);
         } catch (InvalidProtocolBufferException e) {
-            LOGGER.severe("Failed to parse Event: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "Failed to parse Event", e);
             return null;
         }
+    }
+
+    public static byte[] fireEventFromBytes(byte[] data, String pluginName) {
+        org.bukkit.event.Event event = createEventFromBytes(data);
+        if (event == null) {
+            return FireEventResponse.newBuilder().setCancelled(false).build().toByteArray();
+        }
+        if (Bukkit.getServer() instanceof org.patchbukkit.PatchBukkitServer server) {
+            server.getEventManager().fireEvent(event, pluginName);
+        }
+        return toFireEventResponse(event);
     }
 
     @Nullable
@@ -427,7 +439,10 @@ public class PatchBukkitEventFactory {
             java.util.UUID uuid = java.util.UUID.fromString(uuidStr);
             Player player = Bukkit.getServer().getPlayer(uuid);
             if (player == null) {
-                LOGGER.warning("EventFactory: Player not found for UUID " + uuidStr);
+                player = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, "Player");
+                if (Bukkit.getServer() instanceof org.patchbukkit.PatchBukkitServer server) {
+                    server.registerPlayer(player);
+                }
             }
             return player;
         } catch (IllegalArgumentException e) {

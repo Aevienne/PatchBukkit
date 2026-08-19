@@ -47,9 +47,8 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle("26.2.build.111-stable")
+    paperweight.paperDevBundle("26.2.build.112-stable")
     implementation("net.sf.jopt-simple:jopt-simple:6.0-alpha-3")
-    implementation("io.github.astonbitecode:j4rs:0.25.2")
     implementation("org.apache.maven:maven-resolver-provider:3.9.6")
     implementation("org.apache.maven.resolver:maven-resolver-impl:1.9.18")
     implementation("org.apache.maven.resolver:maven-resolver-connector-basic:1.9.18")

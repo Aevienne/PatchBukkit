@@ -1,7 +1,6 @@
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack as PumpkinItemStack;
-use tokio::task::block_in_place;
 
 use crate::{
     java::native_callbacks::{CALLBACK_CONTEXT, utils::with_player},
@@ -55,34 +54,44 @@ fn proto_item_to_pumpkin(proto: Option<&ProtoItemStack>) -> PumpkinItemStack {
 pub fn ffi_native_bridge_get_player_inventory_impl(
     request: Uuid,
 ) -> Option<GetPlayerInventoryResponse> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
-        block_in_place(|| {
-            ctx.runtime.block_on(async {
-                let selected_slot = u32::from(player.inventory.get_selected_slot());
+        let selected_slot = u32::from(player.inventory.get_selected_slot());
 
-                let main_guard = player.inventory.main_inventory.read().await;
-                let main_inventory = main_guard.iter().map(pumpkin_item_to_proto).collect();
+        let main_inventory = player
+            .inventory
+            .main_inventory
+            .try_read()
+            .map(|main_guard| main_guard.iter().map(pumpkin_item_to_proto).collect())
+            .unwrap_or_default();
 
-                let eq_guard = player.inventory.entity_equipment.lock().await;
-                let off_hand = pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::OFF_HAND));
-                let helmet = pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::HEAD));
-                let chestplate = pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::CHEST));
-                let leggings = pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::LEGS));
-                let boots = pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::FEET));
+        let (off_hand, helmet, chestplate, leggings, boots) =
+            if let Ok(eq_guard) = player.inventory.entity_equipment.try_lock() {
+                (
+                    pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::OFF_HAND)),
+                    pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::HEAD)),
+                    pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::CHEST)),
+                    pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::LEGS)),
+                    pumpkin_item_to_proto(&eq_guard.get(&EquipmentSlot::FEET)),
+                )
+            } else {
+                (
+                    pumpkin_item_to_proto(PumpkinItemStack::EMPTY),
+                    pumpkin_item_to_proto(PumpkinItemStack::EMPTY),
+                    pumpkin_item_to_proto(PumpkinItemStack::EMPTY),
+                    pumpkin_item_to_proto(PumpkinItemStack::EMPTY),
+                    pumpkin_item_to_proto(PumpkinItemStack::EMPTY),
+                )
+            };
 
-                GetPlayerInventoryResponse {
-                    main_inventory,
-                    selected_slot,
-                    off_hand: Some(off_hand),
-                    helmet: Some(helmet),
-                    chestplate: Some(chestplate),
-                    leggings: Some(leggings),
-                    boots: Some(boots),
-                }
-            })
-        })
+        GetPlayerInventoryResponse {
+            main_inventory,
+            selected_slot,
+            off_hand: Some(off_hand),
+            helmet: Some(helmet),
+            chestplate: Some(chestplate),
+            leggings: Some(leggings),
+            boots: Some(boots),
+        }
     })
 }
 

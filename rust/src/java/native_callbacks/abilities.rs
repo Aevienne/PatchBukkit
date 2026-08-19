@@ -1,52 +1,73 @@
-use crate::java::native_callbacks::CALLBACK_CONTEXT;
+use crate::java::native_callbacks::{CALLBACK_CONTEXT, utils::with_player};
 use crate::proto::patchbukkit::{
     abilities::{Abilities, SetAbilitiesRequest},
     common::Uuid,
 };
 
 pub fn ffi_native_bridge_get_abilities_impl(request: Uuid) -> Option<Abilities> {
-    let ctx = CALLBACK_CONTEXT.get()?;
-    let player_uuid = uuid::Uuid::parse_str(&request.value).ok()?;
-    let player = ctx.plugin_context.server.get_player_by_uuid(player_uuid)?;
-    let abilities = tokio::task::block_in_place(|| {
-        ctx.runtime
-            .block_on(async { player.abilities.lock().await })
-    });
+    with_player(Some(&request), |player| {
+        let abilities = match player.abilities.try_lock() {
+            Ok(guard) => Abilities {
+                invulnerable: guard.invulnerable,
+                flying: guard.flying,
+                allow_flying: guard.allow_flying,
+                creative: guard.creative,
+                allow_modify_world: guard.allow_modify_world,
+                fly_speed: guard.fly_speed,
+                walk_speed: guard.walk_speed,
+            },
+            Err(_) => {
+                let mut acquired = None;
+                for _ in 0..10 {
+                    std::thread::yield_now();
+                    if let Ok(guard) = player.abilities.try_lock() {
+                        acquired = Some(Abilities {
+                            invulnerable: guard.invulnerable,
+                            flying: guard.flying,
+                            allow_flying: guard.allow_flying,
+                            creative: guard.creative,
+                            allow_modify_world: guard.allow_modify_world,
+                            fly_speed: guard.fly_speed,
+                            walk_speed: guard.walk_speed,
+                        });
+                        break;
+                    }
+                }
+                acquired.unwrap_or(Abilities {
+                    invulnerable: false,
+                    flying: false,
+                    allow_flying: false,
+                    creative: false,
+                    allow_modify_world: true,
+                    fly_speed: 0.05,
+                    walk_speed: 0.1,
+                })
+            }
+        };
 
-    Some(Abilities {
-        invulnerable: abilities.invulnerable,
-        flying: abilities.flying,
-        allow_flying: abilities.allow_flying,
-        creative: abilities.creative,
-        allow_modify_world: abilities.allow_modify_world,
-        fly_speed: abilities.fly_speed,
-        walk_speed: abilities.walk_speed,
-    })
+        Some(abilities)
+    })?
 }
 
 pub fn ffi_native_bridge_set_abilities_impl(request: SetAbilitiesRequest) -> Option<bool> {
     let ctx = CALLBACK_CONTEXT.get()?;
-    let player_uuid = uuid::Uuid::parse_str(&request.uuid?.value).ok()?;
     let abilities = request.abilities?;
-    let player = ctx.plugin_context.server.get_player_by_uuid(player_uuid)?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            {
+                let mut pumpkin_abilities = player.abilities.lock().await;
+                pumpkin_abilities.invulnerable = abilities.invulnerable;
+                pumpkin_abilities.flying = abilities.flying;
+                pumpkin_abilities.allow_flying = abilities.allow_flying;
+                pumpkin_abilities.creative = abilities.creative;
+                pumpkin_abilities.allow_modify_world = abilities.allow_modify_world;
+                pumpkin_abilities.fly_speed = abilities.fly_speed;
+                pumpkin_abilities.walk_speed = abilities.walk_speed;
+            }
+            player.send_abilities_update().await;
+        });
 
-    let mut pumpkin_abilities = tokio::task::block_in_place(|| {
-        ctx.runtime
-            .block_on(async { player.abilities.lock().await })
-    });
-
-    pumpkin_abilities.invulnerable = abilities.invulnerable;
-    pumpkin_abilities.flying = abilities.flying;
-    pumpkin_abilities.allow_flying = abilities.allow_flying;
-    pumpkin_abilities.creative = abilities.creative;
-    pumpkin_abilities.allow_modify_world = abilities.allow_modify_world;
-    pumpkin_abilities.fly_speed = abilities.fly_speed;
-    pumpkin_abilities.walk_speed = abilities.walk_speed;
-
-    let player = player.clone();
-    ctx.runtime.spawn(async move {
-        player.send_abilities_update().await;
-    });
-
-    Some(true)
+        Some(true)
+    })?
 }

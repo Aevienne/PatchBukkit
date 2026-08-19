@@ -12,9 +12,15 @@ import io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler;
 import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -175,6 +181,10 @@ public class PatchBukkitServer implements Server {
         }
     }
 
+    private static final PrintStream ORIGINAL_OUT = System.out;
+    private static final PrintStream ORIGINAL_ERR = System.err;
+    private static final ThreadLocal<Boolean> IN_LOGGING = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private static final Logger logger = Logger.getLogger("Minecraft");
 
     static {
@@ -201,20 +211,136 @@ public class PatchBukkitServer implements Server {
         root.addHandler(new java.util.logging.Handler() {
             @Override
             public void publish(java.util.logging.LogRecord record) {
+                if (record == null) return;
+                if (IN_LOGGING.get()) return;
+                IN_LOGGING.set(true);
                 try {
                     LogLevel logLevel = LEVEL_MAP.getOrDefault(record.getLevel(), LogLevel.INFO);
-                    NativeBridgeFfi.sendLog(
-                            SendLogRequest.newBuilder()
-                                    .setLevel(logLevel)
-                                    .setMessage(record.getMessage() != null ? record.getMessage() : "")
-                                    .setLoggerName(record.getLoggerName() != null ? record.getLoggerName() : "")
-                                    .build()
-                    );
-                } catch (Throwable ignored) {}
+                    String message = formatLogRecord(record);
+                    String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
+                    if (loggerName.startsWith("jdk.") || loggerName.startsWith("sun.") || loggerName.startsWith("java.") || loggerName.startsWith("javax.")) {
+                        if (record.getLevel().intValue() < Level.WARNING.intValue()) {
+                            return;
+                        }
+                    }
+                    try {
+                        NativeBridgeFfi.sendLog(
+                                SendLogRequest.newBuilder()
+                                        .setLevel(logLevel)
+                                        .setMessage(message)
+                                        .setLoggerName(loggerName)
+                                        .build()
+                        );
+                    } catch (Throwable t) {
+                        ORIGINAL_ERR.println("[" + record.getLevel() + "][" + loggerName + "] " + message);
+                    }
+                } catch (Throwable t) {
+                    ORIGINAL_ERR.println("[RootLogger Error] Failed to publish record: " + t.getMessage());
+                } finally {
+                    IN_LOGGING.set(false);
+                }
             }
             @Override public void flush() {}
             @Override public void close() {}
         });
+
+        redirectSystemStreams();
+    }
+
+    public static String formatLogRecord(java.util.logging.LogRecord record) {
+        String msg = record.getMessage();
+        if (msg == null) {
+            msg = "";
+        } else if (record.getResourceBundle() != null) {
+            try {
+                msg = record.getResourceBundle().getString(msg);
+            } catch (Exception ignored) {}
+        }
+        Object[] params = record.getParameters();
+        if (params != null && params.length > 0 && msg.contains("{0}")) {
+            try {
+                msg = MessageFormat.format(msg, params);
+            } catch (Exception ignored) {}
+        }
+        if (record.getThrown() != null) {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            if (!msg.isEmpty()) {
+                pw.println(msg);
+            }
+            record.getThrown().printStackTrace(pw);
+            pw.flush();
+            msg = sw.toString();
+        }
+        return msg;
+    }
+
+    private static void redirectSystemStreams() {
+        try {
+            System.setOut(new LoggingPrintStream(ORIGINAL_OUT, Level.INFO, "System.out"));
+            System.setErr(new LoggingPrintStream(ORIGINAL_ERR, Level.SEVERE, "System.err"));
+        } catch (Throwable t) {
+            ORIGINAL_ERR.println("[PatchBukkit] Failed to redirect System streams: " + t.getMessage());
+        }
+    }
+
+    private static class LoggingPrintStream extends PrintStream {
+        private final PrintStream delegate;
+        private final Level level;
+        private final String loggerName;
+        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+        public LoggingPrintStream(PrintStream delegate, Level level, String loggerName) {
+            super(delegate, true);
+            this.delegate = delegate;
+            this.level = level;
+            this.loggerName = loggerName;
+        }
+
+        @Override
+        public void write(int b) {
+            delegate.write(b);
+            if (b == '\n') {
+                flushBuffer();
+            } else if (b != '\r') {
+                buffer.write(b);
+            }
+        }
+
+        @Override
+        public void write(byte[] buf, int off, int len) {
+            delegate.write(buf, off, len);
+            for (int i = off; i < off + len; i++) {
+                byte b = buf[i];
+                if (b == '\n') {
+                    flushBuffer();
+                } else if (b != '\r') {
+                    buffer.write(b);
+                }
+            }
+        }
+
+        private synchronized void flushBuffer() {
+            if (buffer.size() == 0) return;
+            String line = buffer.toString(StandardCharsets.UTF_8);
+            buffer.reset();
+            if (line.isEmpty() || IN_LOGGING.get()) return;
+            IN_LOGGING.set(true);
+            try {
+                LogLevel logLevel = LEVEL_MAP.getOrDefault(level, LogLevel.INFO);
+                try {
+                    NativeBridgeFfi.sendLog(
+                            SendLogRequest.newBuilder()
+                                    .setLevel(logLevel)
+                                    .setMessage(line)
+                                    .setLoggerName(loggerName)
+                                    .build()
+                    );
+                } catch (Throwable ignored) {}
+            } finally {
+                IN_LOGGING.set(false);
+            }
+        }
     }
 
     /**
@@ -223,6 +349,21 @@ public class PatchBukkitServer implements Server {
     public void registerPlayer(Player player) {
         this.onlinePlayers.put(player.getUniqueId(), player);
         this.onlinePlayersByName.put(player.getName().toLowerCase(), player);
+    }
+
+    public static void registerPlayer(String uuidStr, String name, boolean isOp) {
+        try {
+            UUID uuid = UUID.fromString(uuidStr);
+            org.patchbukkit.entity.PatchBukkitPlayer player = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, name);
+            if (isOp) {
+                player.setOp(true);
+            }
+            if (org.bukkit.Bukkit.getServer() instanceof PatchBukkitServer server) {
+                server.registerPlayer(player);
+            }
+        } catch (Throwable t) {
+            logger.log(Level.SEVERE, "Failed to register player: " + name, t);
+        }
     }
 
     public PatchBukkitEventManager getEventManager() {
@@ -312,10 +453,11 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull String getMinecraftVersion() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMinecraftVersion'"
-        );
+        String version = this.bukkitVersion;
+        if (version != null && version.contains("-")) {
+            return version.split("-")[0];
+        }
+        return version != null && !version.equals("Unknown-Version") ? version : "1.21.4";
     }
 
     @Override
@@ -325,56 +467,36 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public int getMaxPlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMaxPlayers'"
-        );
+        return 20;
     }
 
     @Override
     public void setMaxPlayers(int maxPlayers) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setMaxPlayers'"
-        );
     }
 
     @Override
     public int getPort() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPort'"
-        );
+        return 25565;
     }
 
     @Override
     public int getViewDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getViewDistance'"
-        );
+        return 10;
     }
 
     @Override
     public int getSimulationDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getSimulationDistance'"
-        );
+        return 10;
     }
 
     @Override
     public @NotNull String getIp() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getIp'");
+        return "127.0.0.1";
     }
 
     @Override
     public @NotNull String getWorldType() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorldType'"
-        );
+        return "DEFAULT";
     }
 
     @Override

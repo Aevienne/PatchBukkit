@@ -53,24 +53,16 @@ public class PatchBukkitRegistryAccess extends io.papermc.paper.registry.PaperRe
             return (Registry<T>) existing;
         }
 
-        PatchBukkitRegistry reg = new PatchBukkitRegistry(registryKey);
+        PatchBukkitRegistry reg;
+        RegistryFactory<?, ?> factoryEntry = FACTORIES.get(registryKey);
+        if (factoryEntry != null) {
+            reg = new PatchBukkitRegistry(factoryEntry.registryType(), factoryEntry.extractor(), factoryEntry.factory(), registryKey);
+        } else {
+            reg = new PatchBukkitRegistry(registryKey);
+        }
+
         Registry<?> winner = instances.putIfAbsent(registryKey, reg);
-        if (winner != null) {
-            return (Registry<T>) winner;
-        }
-
-        try {
-            RegistryFactory<?, ?> factoryEntry = FACTORIES.get(registryKey);
-            if (factoryEntry != null) {
-                reg.initialize(factoryEntry.registryType(), factoryEntry.extractor(), factoryEntry.factory());
-            } else {
-                reg.initialize(null, null, null);
-            }
-        } catch (Throwable t) {
-            // Ignore failure during registry initialization safely
-        }
-
-        return (Registry<T>) reg;
+        return (Registry<T>) (winner != null ? winner : reg);
     }
 
     @SuppressWarnings({"unchecked", "deprecation"})

@@ -6,6 +6,8 @@ import java.net.URL;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.Plugin;
@@ -17,11 +19,13 @@ import org.patchbukkit.command.PatchBukkitCommandMap;
 
 public class PatchBukkitBootstrap {
 
+    private static final Logger LOGGER = Logger.getLogger("PatchBukkitBootstrap");
+
     public static boolean bootstrapPlugins(String pluginsDirPath) {
         try {
             File pluginsDir = new File(pluginsDirPath);
             if (!pluginsDir.exists() || !pluginsDir.isDirectory()) {
-                System.out.println("[PatchBukkit] Plugins directory does not exist: " + pluginsDirPath);
+                LOGGER.info("[PatchBukkit] Plugins directory does not exist: " + pluginsDirPath);
                 return true;
             }
 
@@ -29,7 +33,7 @@ public class PatchBukkitBootstrap {
             findJarsRecursive(pluginsDir, jarFiles);
 
             if (jarFiles.isEmpty()) {
-                System.out.println("[PatchBukkit] No plugin JAR files found in: " + pluginsDirPath);
+                LOGGER.info("[PatchBukkit] No plugin JAR files found in: " + pluginsDirPath);
                 return true;
             }
 
@@ -42,8 +46,7 @@ public class PatchBukkitBootstrap {
                         holders.put(holder.name.toLowerCase(Locale.ENGLISH), holder);
                     }
                 } catch (Throwable t) {
-                    System.err.println("[PatchBukkit] Failed to parse plugin JAR " + jarFile.getName() + ": " + t.getMessage());
-                    t.printStackTrace();
+                    LOGGER.log(Level.SEVERE, "[PatchBukkit] Failed to parse plugin JAR " + jarFile.getName(), t);
                 }
             }
 
@@ -53,8 +56,7 @@ public class PatchBukkitBootstrap {
                 try {
                     loadAndRegisterPlugin(holder, holders);
                 } catch (Throwable t) {
-                    System.err.println("[PatchBukkit] Failed to load plugin " + holder.name + ": " + t.getMessage());
-                    t.printStackTrace();
+                    LOGGER.log(Level.SEVERE, "[PatchBukkit] Failed to load plugin " + holder.name, t);
                 }
             }
 
@@ -64,10 +66,9 @@ public class PatchBukkitBootstrap {
                     if (holder.pluginInstance != null) {
                         try {
                             pm.enablePlugin(holder.pluginInstance);
-                            System.out.println("[PatchBukkit] Enabled plugin: " + holder.name);
+                            LOGGER.info("[PatchBukkit] Enabled plugin: " + holder.name);
                         } catch (Throwable t) {
-                            System.err.println("[PatchBukkit] Error enabling plugin " + holder.name + ": " + t.getMessage());
-                            t.printStackTrace();
+                            LOGGER.log(Level.SEVERE, "[PatchBukkit] Error enabling plugin " + holder.name, t);
                         }
                     }
                 }
@@ -75,8 +76,7 @@ public class PatchBukkitBootstrap {
 
             return true;
         } catch (Throwable t) {
-            System.err.println("[PatchBukkit] Fatal error during bootstrap: " + t.getMessage());
-            t.printStackTrace();
+            LOGGER.log(Level.SEVERE, "[PatchBukkit] Fatal error during bootstrap", t);
             return false;
         }
     }
@@ -210,14 +210,17 @@ public class PatchBukkitBootstrap {
         try {
             plugin.onLoad();
         } catch (Throwable t) {
-            System.err.println("[PatchBukkit] Error during onLoad() for " + holder.name + ": " + t.getMessage());
-            t.printStackTrace();
+            LOGGER.log(Level.SEVERE, "[PatchBukkit] Error during onLoad() for " + holder.name, t);
         }
 
         holder.pluginInstance = plugin;
+        registerPluginCommands(plugin, holder.description);
+    }
 
+    public static void registerPluginCommands(Plugin plugin, PluginDescriptionFile description) {
+        if (plugin == null || description == null) return;
         if (Bukkit.getCommandMap() instanceof PatchBukkitCommandMap commandMap) {
-            Map<String, Map<String, Object>> commands = holder.description.getCommands();
+            Map<String, Map<String, Object>> commands = description.getCommands();
             if (commands != null) {
                 for (Map.Entry<String, Map<String, Object>> entry : commands.entrySet()) {
                     String cmdName = entry.getKey();
@@ -247,8 +250,8 @@ public class PatchBukkitBootstrap {
                             }
                         }
 
-                        commandMap.register(cmdName, holder.name, pluginCmd);
-                        System.out.println("[PatchBukkit] Registered command: /" + cmdName + " for plugin " + holder.name);
+                        commandMap.register(cmdName, description.getName(), pluginCmd);
+                        System.out.println("[PatchBukkit] Registered command: /" + cmdName + " for plugin " + description.getName());
                     }
                 }
             }

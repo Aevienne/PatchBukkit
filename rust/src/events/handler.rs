@@ -1,11 +1,9 @@
 use std::marker::PhantomData;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use pumpkin::entity::player::Player;
 use pumpkin::plugin::{BoxFuture, Cancellable, EventHandler, Payload};
 use pumpkin::server::Server;
-use pumpkin_api_macros::with_runtime;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::java::jvm::commands::JvmCommand;
@@ -52,10 +50,11 @@ impl PatchBukkitEvent for pumpkin::plugin::player::player_join::PlayerJoinEvent 
         }
     }
 
-    fn apply_modifications(&mut self, server: &Arc<Server>, data: Data) -> Option<()> {
-        if let Data::PlayerJoin(event) = data {
-            self.join_message = serde_json::from_str(&event.join_message).ok()?;
-            server.get_player_by_uuid(uuid::Uuid::from_str(&event.player_uuid?.value).ok()?)?;
+    fn apply_modifications(&mut self, _server: &Arc<Server>, data: Data) -> Option<()> {
+        if let Data::PlayerJoin(event) = data
+            && let Ok(msg) = serde_json::from_str(&event.join_message)
+        {
+            self.join_message = msg;
         }
 
         Some(())
@@ -80,10 +79,11 @@ impl PatchBukkitEvent for pumpkin::plugin::player::player_leave::PlayerLeaveEven
         }
     }
 
-    fn apply_modifications(&mut self, server: &Arc<Server>, data: Data) -> Option<()> {
-        if let Data::PlayerQuit(event) = data {
-            self.leave_message = serde_json::from_str(&event.quit_message).ok()?;
-            server.get_player_by_uuid(uuid::Uuid::from_str(&event.player_uuid?.value).ok()?)?;
+    fn apply_modifications(&mut self, _server: &Arc<Server>, data: Data) -> Option<()> {
+        if let Data::PlayerQuit(event) = data
+            && let Ok(msg) = serde_json::from_str(&event.quit_message)
+        {
+            self.leave_message = msg;
         }
 
         Some(())
@@ -603,23 +603,51 @@ impl<E: PatchBukkitEvent> PatchBukkitEventHandler<E> {
     }
 }
 
-#[with_runtime(global)]
 impl<E> EventHandler<E> for PatchBukkitEventHandler<E>
 where
     E: PatchBukkitEvent + Payload + Cancellable + 'static,
 {
+    fn handle<'a>(&'a self, server: &'a Arc<Server>, event: &'a E) -> BoxFuture<'a, ()> {
+        let command_tx = self.command_tx.clone();
+        let payload = event.to_payload(server.clone());
+        if let Some(player) = &payload.context.player {
+            crate::java::native_callbacks::utils::cache_player(player.clone());
+        }
+
+        Box::pin(async move {
+            let (tx, rx) = oneshot::channel();
+            if let Err(e) = command_tx
+                .send(JvmCommand::FireEvent {
+                    payload,
+                    respond_to: tx,
+                    plugin: self.plugin_name.clone(),
+                })
+                .await
+            {
+                tracing::error!("Failed to send event to JVM worker: {e}");
+                return;
+            }
+
+            let _ = rx.await;
+        })
+    }
+
     fn handle_blocking<'a>(
         &'a self,
         server: &'a Arc<Server>,
         event: &'a mut E,
     ) -> BoxFuture<'a, ()> {
         let command_tx = self.command_tx.clone();
+        let payload = event.to_payload(server.clone());
+        if let Some(player) = &payload.context.player {
+            crate::java::native_callbacks::utils::cache_player(player.clone());
+        }
 
         Box::pin(async move {
             let (tx, rx) = oneshot::channel();
             if let Err(e) = command_tx
                 .send(JvmCommand::FireEvent {
-                    payload: event.to_payload(server.clone()),
+                    payload,
                     respond_to: tx,
                     plugin: self.plugin_name.clone(),
                 })
@@ -632,7 +660,9 @@ where
             match rx.await {
                 Ok(response) => {
                     event.set_cancelled(response.cancelled);
-                    event.apply_modifications(server, response.data.unwrap().data.unwrap());
+                    if let Some(event_data) = response.data.and_then(|d| d.data) {
+                        let _ = event.apply_modifications(server, event_data);
+                    }
                 }
                 Err(_) => {
                     tracing::warn!("JVM worker dropped response channel for event");

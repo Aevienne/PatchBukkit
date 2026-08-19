@@ -4,9 +4,6 @@
 
 # Rust resources
 rust/resources/jassets/*
-!rust/resources/jassets/j4rs-*
-
-rust/resources/deps/*
 
 # Gradle cache
 .gradle/

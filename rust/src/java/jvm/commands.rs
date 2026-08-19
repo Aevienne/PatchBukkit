@@ -22,9 +22,10 @@ pub enum LoadPluginResult {
 
 pub enum JvmCommand {
     Initialize {
-        j4rs_path: PathBuf,
+        jassets_path: PathBuf,
         respond_to: oneshot::Sender<Result<()>>,
         context: Arc<Context>,
+        runtime_handle: tokio::runtime::Handle,
         command_tx: mpsc::Sender<Self>,
         config: PatchBukkitConfig,
     },

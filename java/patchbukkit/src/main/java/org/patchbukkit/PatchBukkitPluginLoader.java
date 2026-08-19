@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.bukkit.event.Event;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.EventExecutor;
@@ -24,6 +26,8 @@ import org.patchbukkit.PatchBukkitPluginManager;
 @SuppressWarnings({ "deprecation", "removal" })
 public class PatchBukkitPluginLoader implements PluginLoader {
 
+    private static final Logger LOGGER = Logger.getLogger("PatchBukkitPluginLoader");
+
     public static Plugin createPlugin(
         String jarPath,
         String mainClass,
@@ -33,7 +37,7 @@ public class PatchBukkitPluginLoader implements PluginLoader {
         try {
             File jarFile = new File(jarPath);
             if (!jarFile.exists()) {
-                System.err.println(
+                LOGGER.severe(
                     "[PatchBukkit] Plugin file does not exist: " + jarPath
                 );
                 return null;
@@ -88,15 +92,16 @@ public class PatchBukkitPluginLoader implements PluginLoader {
                 }
             } catch (Throwable ignored) {}
             try {
+                PatchBukkitBootstrap.registerPluginCommands(plugin, classLoader.getDescription());
+            } catch (Throwable ignored) {}
+            try {
                 plugin.onLoad();
             } catch (Throwable t) {
-                System.err.println("[PatchBukkit] Error during onLoad() for " + mainClass + ": " + t.getMessage());
-                t.printStackTrace();
+                LOGGER.log(Level.SEVERE, "[PatchBukkit] Error during onLoad() for " + mainClass, t);
             }
             return plugin;
         } catch (Throwable e) {
-            System.err.println("[PatchBukkit] Failed to instantiate plugin class " + mainClass + ": " + e.getMessage());
-            e.printStackTrace();
+            LOGGER.log(Level.SEVERE, "[PatchBukkit] Failed to instantiate plugin class " + mainClass, e);
             return null;
         }
     }
@@ -110,11 +115,11 @@ public class PatchBukkitPluginLoader implements PluginLoader {
                     return true;
                 }
             }
+            return false;
         } catch (Throwable t) {
-            System.err.println("[PatchBukkit] Failed to enable plugin " + pluginName + ": " + t.getMessage());
-            t.printStackTrace();
+            LOGGER.log(Level.SEVERE, "[PatchBukkit] Failed to enable plugin " + pluginName, t);
+            return false;
         }
-        return false;
     }
 
     public static boolean disablePlugin(String pluginName) {
@@ -126,11 +131,11 @@ public class PatchBukkitPluginLoader implements PluginLoader {
                     return true;
                 }
             }
+            return false;
         } catch (Throwable t) {
-            System.err.println("[PatchBukkit] Failed to disable plugin " + pluginName + ": " + t.getMessage());
-            t.printStackTrace();
+            LOGGER.log(Level.SEVERE, "[PatchBukkit] Failed to disable plugin " + pluginName, t);
+            return false;
         }
-        return false;
     }
 
     @Override

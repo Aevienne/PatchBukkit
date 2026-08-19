@@ -108,10 +108,12 @@ public class PatchBukkitPluginManager implements PluginManager {
             Plugin plugin = pluginClass.getDeclaredConstructor().newInstance();
             loader.init((org.bukkit.plugin.java.JavaPlugin) plugin);
             try {
+                org.patchbukkit.loader.PatchBukkitBootstrap.registerPluginCommands(plugin, description);
+            } catch (Throwable ignored) {}
+            try {
                 plugin.onLoad();
             } catch (Throwable t) {
-                server.getLogger().severe("Error loading " + plugin.getName() + ": " + t.getMessage());
-                t.printStackTrace();
+                server.getLogger().log(Level.SEVERE, "Error loading " + plugin.getName(), t);
             }
             registerPlugin(plugin);
             return plugin;
@@ -145,7 +147,7 @@ public class PatchBukkitPluginManager implements PluginManager {
                         result.add(plugin);
                     }
                 } catch (Exception e) {
-                    server.getLogger().severe("Could not load plugin '" + file.getName() + "' in folder '" + file.getParent() + "': " + e.getMessage());
+                    server.getLogger().log(Level.SEVERE, "Could not load plugin '" + file.getName() + "' in folder '" + file.getParent() + "'", e);
                 }
             }
         }

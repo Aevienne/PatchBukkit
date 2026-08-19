@@ -1,7 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
-use j4rs::Jvm;
 use pumpkin::plugin::Context;
 use tokio::sync::mpsc;
 
@@ -76,6 +75,6 @@ pub fn init_callback_context(
     Ok(())
 }
 
-pub fn initialize_callbacks(jvm: &Jvm) -> Result<()> {
-    initialize_ffi_callbacks(jvm)
+pub fn initialize_callbacks(env: &mut jni::Env) -> Result<()> {
+    initialize_ffi_callbacks(env)
 }

@@ -79,6 +79,8 @@ public class PatchBukkitCommandMap extends SimpleCommandMap {
             registeredDirectly = true;
         }
 
+        command.register(this);
+
         registerVariants(label, command);
         registerVariants(fallbackPrefix + ":" + label, command);
         if (!clean.isEmpty()) {
@@ -105,7 +107,8 @@ public class PatchBukkitCommandMap extends SimpleCommandMap {
                     .setPluginName(fallbackPrefix)
                     .build();
             NativeBridgeFfi.registerCommand(request);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            server.getLogger().log(java.util.logging.Level.WARNING, "Failed to register command to native bridge: " + label, t);
         }
 
         return registeredDirectly;
@@ -140,9 +143,63 @@ public class PatchBukkitCommandMap extends SimpleCommandMap {
 
         try {
             String[] args = Arrays.copyOfRange(split, 1, split.length);
-            return command.execute(sender, rawLabel, args);
+            String executedLabel = rawLabel.startsWith("//") ? rawLabel : cleanLabel(rawLabel);
+            return command.execute(sender, executedLabel, args);
         } catch (Exception ex) {
             throw new CommandException("Unhandled exception executing '" + cmdLine + "'", ex);
+        }
+    }
+
+    public static boolean dispatchRaw(String senderUuid, String senderName, boolean isOp, String commandLine) {
+        try {
+            org.bukkit.command.CommandSender sender;
+            if (senderUuid != null && !senderUuid.isBlank()) {
+                java.util.UUID uuid = java.util.UUID.fromString(senderUuid);
+                sender = org.bukkit.Bukkit.getPlayer(uuid);
+                if (sender == null) {
+                    sender = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, senderName != null ? senderName : "Player");
+                }
+                if (sender instanceof org.patchbukkit.entity.PatchBukkitPlayer p) {
+                    p.setOp(isOp);
+                }
+            } else {
+                sender = org.bukkit.Bukkit.getConsoleSender();
+            }
+            return org.bukkit.Bukkit.dispatchCommand(sender, commandLine);
+        } catch (Throwable t) {
+            org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.SEVERE, "Error dispatching command: " + commandLine, t);
+            return false;
+        }
+    }
+
+    public static String[] tabCompleteRaw(String senderUuid, String senderName, boolean isOp, String fullCommand, String worldName, double x, double y, double z) {
+        try {
+            org.bukkit.command.CommandSender sender;
+            if (senderUuid != null && !senderUuid.isBlank()) {
+                java.util.UUID uuid = java.util.UUID.fromString(senderUuid);
+                sender = org.bukkit.Bukkit.getPlayer(uuid);
+                if (sender == null) {
+                    sender = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, senderName != null ? senderName : "Player");
+                }
+                if (sender instanceof org.patchbukkit.entity.PatchBukkitPlayer p) {
+                    p.setOp(isOp);
+                }
+            } else {
+                sender = org.bukkit.Bukkit.getConsoleSender();
+            }
+            Location loc = null;
+            if (worldName != null && !worldName.isBlank()) {
+                org.bukkit.World world = org.patchbukkit.world.PatchBukkitWorld.getOrCreate(worldName);
+                loc = new Location(world, x, y, z);
+            }
+            List<String> list = org.bukkit.Bukkit.getServer().getCommandMap().tabComplete(sender, fullCommand, loc);
+            if (list == null || list.isEmpty()) {
+                return new String[0];
+            }
+            return list.toArray(new String[0]);
+        } catch (Throwable t) {
+            org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.WARNING, "Error during tab completion: " + fullCommand, t);
+            return new String[0];
         }
     }
 

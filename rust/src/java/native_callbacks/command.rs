@@ -3,7 +3,13 @@ use pumpkin_util::permission::{Permission, PermissionDefault};
 use crate::{commands::init_java_command, proto::patchbukkit::command::RegisterCommandRequest};
 
 pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) -> Option<()> {
-    let context = super::CALLBACK_CONTEXT.get()?;
+    let Some(context) = super::CALLBACK_CONTEXT.get() else {
+        tracing::warn!(
+            "Failed to register command '{}': CALLBACK_CONTEXT is not initialized",
+            request.cmd_name
+        );
+        return None;
+    };
 
     let cmd_name = request.cmd_name;
     let aliases = request.aliases;
@@ -11,6 +17,13 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
     let plugin_name = request.plugin_name;
     let command_tx = context.command_tx.clone();
     let plugin_context = context.plugin_context.clone();
+
+    tracing::info!(
+        "Registering Bukkit command '{}' from plugin '{}' (aliases: {:?})",
+        cmd_name,
+        plugin_name,
+        aliases
+    );
 
     context.runtime.spawn(async move {
         let mut raw_names: Vec<String> = vec![cmd_name.clone()];
@@ -34,23 +47,31 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             }
         }
 
-        let node = init_java_command(cmd_name.clone(), command_tx, names, description);
+        let node = init_java_command(cmd_name.clone(), command_tx, names.clone(), description);
 
         let clean_perm = cmd_name.trim_start_matches('/');
         let permission = format!("patchbukkit:command.{clean_perm}");
 
-        let registry = {
-            let permission_manager = plugin_context.permission_manager.read().await;
-            permission_manager.registry.clone()
-        };
+        let registry = plugin_context.server.permission_manager.clone();
 
-        let _ = registry.write().await.register_permission(Permission::new(
+        if let Err(e) = registry.register_permission(Permission::new(
             &permission,
             &format!("Allows running command `{cmd_name}` from `{plugin_name}`"),
             PermissionDefault::Allow,
-        ));
+        )) {
+            tracing::debug!("Permission '{}' registration notice: {}", permission, e);
+        }
 
-        plugin_context.register_command(node, permission).await;
+        plugin_context
+            .register_command(node, permission.clone())
+            .await;
+
+        tracing::info!(
+            "Successfully registered command '{}' with names {:?} and permission '{}'",
+            cmd_name,
+            names,
+            permission
+        );
     });
 
     Some(())

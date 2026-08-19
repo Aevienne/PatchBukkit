@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use j4rs::{InvocationArg, Jvm, JvmBuilder};
+use jni::{Env, InitArgsBuilder, JNIVersion, JavaVM};
 use pumpkin::plugin::Context;
 use tokio::sync::mpsc;
 
@@ -21,7 +21,7 @@ pub struct JvmWorker {
     pub plugin_manager: PluginManager,
     pub event_manager: EventManager,
     pub command_manager: CommandManager,
-    jvm: Option<j4rs::Jvm>,
+    jvm: Option<Arc<JavaVM>>,
     context: Option<Arc<Context>>,
 }
 
@@ -44,21 +44,22 @@ impl JvmWorker {
         while let Some(command) = self.command_rx.recv().await {
             match command {
                 JvmCommand::Initialize {
-                    j4rs_path,
+                    jassets_path,
                     respond_to,
                     context,
+                    runtime_handle,
                     command_tx,
                     config,
                 } => {
                     init_callback_context(
                         context.clone(),
-                        tokio::runtime::Handle::current(),
+                        runtime_handle,
                         command_tx.clone(),
                         config,
                     )
                     .unwrap();
                     self.context = Some(context);
-                    let result = self.initialize_jvm(&j4rs_path);
+                    let result = self.initialize_jvm(&jassets_path);
                     let _ = respond_to.send(result);
                 }
                 JvmCommand::LoadPlugin {
@@ -105,38 +106,49 @@ impl JvmWorker {
                     server,
                     command_tx,
                 } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
-                    };
-
-                    let _ = respond_to.send(
-                        self.plugin_manager
-                            .instantiate_all_plugins(
-                                jvm,
+                    let res = if let Some(ref jvm) = self.jvm {
+                        let plugins_dir = plugins_dir.clone();
+                        let server = server.clone();
+                        let command_tx = command_tx.clone();
+                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                            self.plugin_manager.instantiate_all_plugins(
+                                env,
                                 &plugins_dir,
                                 &server,
                                 command_tx,
                                 &mut self.command_manager,
                             )
-                            .await,
-                    );
+                        })
+                        .map_err(|e| anyhow::anyhow!("Failed to instantiate plugins: {e}"))
+                    } else {
+                        Err(anyhow::anyhow!("JVM is not initialized"))
+                    };
+
+                    let _ = respond_to.send(res);
                 }
                 JvmCommand::EnableAllPlugins { respond_to } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
+                    let res = if let Some(ref jvm) = self.jvm {
+                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                            self.plugin_manager.enable_all_plugins(env)
+                        })
+                        .map_err(|e| anyhow::anyhow!("Failed to enable plugins: {e}"))
+                    } else {
+                        Err(anyhow::anyhow!("JVM is not initialized"))
                     };
 
-                    let _ = respond_to.send(self.plugin_manager.enable_all_plugins(jvm));
+                    let _ = respond_to.send(res);
                 }
                 JvmCommand::DisableAllPlugins { respond_to } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
+                    let res = if let Some(ref jvm) = self.jvm {
+                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                            self.plugin_manager.disable_all_plugins(env)
+                        })
+                        .map_err(|e| anyhow::anyhow!("Failed to disable plugins: {e}"))
+                    } else {
+                        Err(anyhow::anyhow!("JVM is not initialized"))
                     };
 
-                    let _ = respond_to.send(self.plugin_manager.disable_all_plugins(jvm));
+                    let _ = respond_to.send(res);
                 }
                 JvmCommand::Shutdown { respond_to } => {
                     let _ = respond_to.send(self.plugin_manager.unload_all_plugins());
@@ -147,40 +159,47 @@ impl JvmWorker {
                     plugin,
                     payload,
                 } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
-                    };
-
                     let original_event = payload.event.clone();
-                    let cancelled = match self.event_manager.fire_event(jvm, payload, plugin) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::error!("Failed to fire event: {e}");
-                            FireEventResponse {
-                                cancelled: false,
-                                data: Some(original_event),
+                    let response = if let Some(ref jvm) = self.jvm {
+                        match jvm.attach_current_thread(
+                            |env| -> anyhow::Result<FireEventResponse> {
+                                self.event_manager.fire_event(env, payload, plugin)
+                            },
+                        ) {
+                            Ok(resp) => resp,
+                            Err(e) => {
+                                tracing::error!("Failed to fire event: {e}");
+                                FireEventResponse {
+                                    cancelled: false,
+                                    data: Some(original_event),
+                                }
                             }
+                        }
+                    } else {
+                        FireEventResponse {
+                            cancelled: false,
+                            data: Some(original_event),
                         }
                     };
 
-                    let _ = respond_to.send(cancelled);
+                    let _ = respond_to.send(response);
                 }
                 JvmCommand::TriggerCommand {
                     full_command,
                     command_sender,
                     respond_to,
                 } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
+                    let res = if let Some(ref jvm) = self.jvm {
+                        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+                            self.command_manager
+                                .trigger_command(env, full_command, command_sender)
+                        })
+                        .map_err(|e| anyhow::anyhow!("Failed to trigger command: {e}"))
+                    } else {
+                        Err(anyhow::anyhow!("JVM is not initialized"))
                     };
 
-                    let result =
-                        self.command_manager
-                            .trigger_command(jvm, full_command, command_sender);
-
-                    let _ = respond_to.send(result);
+                    let _ = respond_to.send(res);
                 }
                 JvmCommand::GetCommandTabComplete {
                     command_sender,
@@ -188,19 +207,26 @@ impl JvmWorker {
                     respond_to,
                     location,
                 } => {
-                    let jvm = match self.jvm {
-                        Some(ref jvm) => jvm,
-                        None => &Jvm::attach_thread().unwrap(),
+                    let res = if let Some(ref jvm) = self.jvm {
+                        match jvm.attach_current_thread(|env| -> anyhow::Result<_> {
+                            Ok(self.command_manager.get_tab_complete(
+                                env,
+                                command_sender,
+                                full_command,
+                                location,
+                            ))
+                        }) {
+                            Ok(inner_res) => inner_res,
+                            Err(e) => {
+                                tracing::error!("Failed to get tab complete: {e}");
+                                Ok(None)
+                            }
+                        }
+                    } else {
+                        Ok(None)
                     };
 
-                    let result = self.command_manager.get_tab_complete(
-                        jvm,
-                        command_sender,
-                        full_command,
-                        location,
-                    );
-
-                    let _ = respond_to.send(result);
+                    let _ = respond_to.send(res);
                 }
             }
         }
@@ -208,41 +234,85 @@ impl JvmWorker {
         tracing::info!("JVM worker thread exited");
     }
 
-    fn initialize_jvm(&mut self, j4rs_path: &PathBuf) -> anyhow::Result<()> {
-        tracing::info!("Initializing JVM with path: {j4rs_path:?}");
+    fn initialize_jvm(&mut self, jassets_path: &PathBuf) -> anyhow::Result<()> {
+        tracing::info!("Initializing JVM with assets path: {jassets_path:?}");
 
-        let jassets = j4rs_path.join("jassets");
-        let mut classpath_entries = Vec::new();
+        let mut jar_paths = Vec::new();
 
-        if let Ok(entries) = std::fs::read_dir(&jassets) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(filename) = path.file_name().and_then(|n| n.to_str())
-                    && filename.ends_with(".jar")
-                {
-                    classpath_entries.push(j4rs::ClasspathEntry::new(&path));
-                }
+        for entry in walkdir::WalkDir::new(jassets_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path().to_path_buf();
+            if let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                && filename.ends_with(".jar")
+            {
+                jar_paths.push(path);
             }
         }
 
-        let mut jvm_builder = JvmBuilder::new();
-        let mut jvm_builder = jvm_builder.with_base_path(j4rs_path).java_opts(vec![
-            j4rs::JavaOpt::new("--enable-native-access=ALL-UNNAMED"),
-            j4rs::JavaOpt::new("--enable-final-field-mutation=ALL-UNNAMED"),
-            j4rs::JavaOpt::new("--add-opens=java.base/java.lang=ALL-UNNAMED"),
-            j4rs::JavaOpt::new("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"),
-            j4rs::JavaOpt::new("-Dcom.google.protobuf.useUnsafe=false"),
-        ]);
-
-        for entry in classpath_entries {
-            jvm_builder = jvm_builder.classpath_entry(entry);
+        if jar_paths.is_empty() {
+            tracing::warn!(
+                "No JAR files found in jassets directory ({:?})",
+                jassets_path
+            );
+        } else {
+            tracing::info!(
+                "Found {} JAR entries in jassets: {:?}",
+                jar_paths.len(),
+                jar_paths
+            );
         }
 
-        let jvm = jvm_builder.build()?;
+        let has_patchbukkit = jar_paths.iter().any(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains("patchbukkit"))
+        });
+        if !has_patchbukkit {
+            tracing::warn!(
+                "patchbukkit.jar was not found in {:?}. Server classes may fail to load!",
+                jassets_path
+            );
+        }
 
-        initialize_callbacks(&jvm)?;
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let classpath = jar_paths
+            .iter()
+            .map(|p| p.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(separator);
 
-        setup_patchbukkit_server(&jvm)?;
+        let jvm_args = InitArgsBuilder::new()
+            .version(JNIVersion::V21)
+            .option(format!("-Djava.class.path={classpath}"))
+            .option("--enable-native-access=ALL-UNNAMED")
+            .option("--enable-final-field-mutation=ALL-UNNAMED")
+            .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
+            .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
+            .option("-Dcom.google.protobuf.useUnsafe=false")
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build JVM init args: {e:?}"))?;
+
+        let jvm =
+            JavaVM::new(jvm_args).map_err(|e| anyhow::anyhow!("Failed to create JavaVM: {e:?}"))?;
+        let jvm = Arc::new(jvm);
+
+        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+            initialize_callbacks(env).map_err(|e| {
+                tracing::error!("Failed to initialize callbacks: {e:?}");
+                e
+            })?;
+
+            setup_patchbukkit_server(env).map_err(|e| {
+                tracing::error!("Failed to setup PatchBukkit server: {e:?}");
+                e
+            })?;
+
+            Ok(())
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
 
         self.jvm = Some(jvm);
 
@@ -251,12 +321,17 @@ impl JvmWorker {
     }
 }
 
-pub fn setup_patchbukkit_server(jvm: &Jvm) -> anyhow::Result<()> {
-    jvm.invoke_static(
-        "org.patchbukkit.PatchBukkitServer",
-        "initServer",
-        InvocationArg::empty(),
-    )?;
+pub fn setup_patchbukkit_server(env: &mut Env) -> anyhow::Result<()> {
+    if let Err(e) = env.call_static_method(
+        jni::jni_str!("org/patchbukkit/PatchBukkitServer"),
+        jni::jni_str!("initServer"),
+        jni::jni_sig!("()Lorg/patchbukkit/PatchBukkitServer;"),
+        &[],
+    ) {
+        env.exception_describe();
+        env.exception_clear();
+        return Err(anyhow::anyhow!("Failed to setup PatchBukkit server: {e:?}"));
+    }
 
     Ok(())
 }

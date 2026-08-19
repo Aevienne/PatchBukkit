@@ -12,6 +12,14 @@ pub fn get_string(str_ptr: *const c_char) -> String {
     unsafe { CStr::from_ptr(str_ptr).to_string_lossy().into_owned() }
 }
 
+pub fn cache_player(player: Arc<Player>) {
+    let player_uuid = player.gameprofile.id;
+    if let Ok(mut write_guard) = PLAYER_HANDLE_CACHE.write() {
+        let cache = write_guard.get_or_insert_with(HashMap::new);
+        cache.insert(player_uuid, player);
+    }
+}
+
 pub fn with_player<F, R>(proto_uuid: Option<&ProtoUuid>, f: F) -> Option<R>
 where
     F: FnOnce(Arc<Player>) -> R,

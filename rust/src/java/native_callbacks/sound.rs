@@ -38,8 +38,7 @@ pub fn ffi_native_bridge_player_entity_play_sound_impl(
         let entity = entity.first()?.get_entity();
 
         player
-            .client
-            .enqueue_packet(&CEntitySoundEffect::new(
+            .send_client_packet(&CEntitySoundEffect::new(
                 IdOr::Id(pumpkin_sound as u16),
                 category,
                 entity.entity_id.into(),

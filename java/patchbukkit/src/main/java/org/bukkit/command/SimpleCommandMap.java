@@ -42,6 +42,8 @@ public class SimpleCommandMap implements CommandMap {
             knownCommands.put(label, command);
             registeredDirectly = true;
         }
+
+        command.register(this);
         knownCommands.put(fallbackPrefix + ":" + label, command);
 
         if (command.getAliases() != null) {

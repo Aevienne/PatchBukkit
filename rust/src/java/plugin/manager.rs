@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use j4rs::{Instance, InvocationArg, Jvm};
+use jni::Env;
 use pumpkin::plugin::Context;
 use tokio::sync::mpsc;
 
@@ -64,11 +64,8 @@ pub struct Plugin {
     pub state: PluginState,
     /// Data folder for this plugin
     pub data_folder: PathBuf,
-    pub instance: Option<Instance>,
     // The registered commands
     pub commands: HashMap<String, Command>,
-
-    pub listeners: HashMap<String, Instance>,
 
     // Dependency metadata (normalized to lowercase)
     pub provides: Vec<String>,
@@ -257,9 +254,7 @@ impl PluginManager {
             state: PluginState::Registered,
             data_folder: jar_path.as_ref().parent().unwrap().join("data"),
             path: jar_path.as_ref().to_path_buf(),
-            instance: None,
             commands,
-            listeners: HashMap::new(),
 
             provides,
             depends: dedupe_names(depends),
@@ -306,9 +301,7 @@ impl PluginManager {
             state: PluginState::Registered,
             data_folder: jar_path.as_ref().parent().unwrap().join("data"),
             path: jar_path.as_ref().to_path_buf(),
-            instance: None,
             commands,
-            listeners: HashMap::new(),
 
             provides,
             depends: dedupe_names(depends),
@@ -323,30 +316,43 @@ impl PluginManager {
         Ok(())
     }
 
-    pub fn enable_all_plugins(&mut self, _jvm: &Jvm) -> Result<()> {
+    pub fn enable_all_plugins(&mut self, _env: &mut Env) -> Result<()> {
         Ok(())
     }
 
-    pub fn disable_all_plugins(&mut self, _jvm: &Jvm) -> Result<()> {
+    pub fn disable_all_plugins(&mut self, _env: &mut Env) -> Result<()> {
         Ok(())
     }
 
-    pub async fn instantiate_all_plugins(
+    pub fn instantiate_all_plugins(
         &mut self,
-        jvm: &Jvm,
+        env: &mut Env,
         plugin_folder: &Path,
         _server: &Arc<Context>,
         _command_tx: mpsc::Sender<JvmCommand>,
         _command_manager: &mut CommandManager,
     ) -> Result<()> {
         tracing::info!("Bootstrapping Java plugins from {:?}", plugin_folder);
-        let _ = jvm.invoke_static(
-            "org.patchbukkit.loader.PatchBukkitBootstrap",
-            "bootstrapPlugins",
-            &[InvocationArg::try_from(
-                &plugin_folder.to_string_lossy().to_string(),
-            )?],
+        let path_str = plugin_folder.to_string_lossy();
+        let j_str = env.new_string(&path_str)?;
+        let result = env.call_static_method(
+            jni::jni_str!("org/patchbukkit/loader/PatchBukkitBootstrap"),
+            jni::jni_str!("bootstrapPlugins"),
+            jni::jni_sig!("(Ljava/lang/String;)Z"),
+            &[(&j_str).into()],
         );
+
+        match result {
+            Ok(val) => {
+                if !val.z()? {
+                    tracing::error!("Bootstrap of Java plugins reported errors");
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to bootstrap Java plugins: {:?}", e);
+                return Err(e.into());
+            }
+        }
         Ok(())
     }
 

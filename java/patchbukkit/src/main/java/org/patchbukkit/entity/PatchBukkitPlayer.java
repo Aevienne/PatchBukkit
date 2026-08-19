@@ -1240,15 +1240,18 @@ public class PatchBukkitPlayer
 
     @Override
     public boolean getAllowFlight() {
-        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getAllowFlying();
+        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
+        return abilities != null && abilities.getAllowFlying();
     }
 
     @Override
     public void setAllowFlight(boolean flight) {
-        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).toBuilder();
-        abilities.setAllowFlying(flight);
-        if (abilities.getFlying()) abilities.setFlying(false);
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(BridgeUtils.convertUuid(this.uuid)).build());
+        var playerUuid = BridgeUtils.convertUuid(this.uuid);
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
+        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
+        builder.setAllowFlying(flight);
+        if (builder.getFlying()) builder.setFlying(false);
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
     }
 
     @Override
@@ -1335,14 +1338,17 @@ public class PatchBukkitPlayer
 
     @Override
     public boolean isFlying() {
-        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getFlying();
+        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
+        return abilities != null && abilities.getFlying();
     }
 
     @Override
     public void setFlying(boolean value) {
         var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid).toBuilder().setFlying(value).build();
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(playerUuid).build());
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
+        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
+        builder.setFlying(value);
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
     }
 
     @Override
@@ -1351,8 +1357,10 @@ public class PatchBukkitPlayer
             throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
         }
         var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid).toBuilder().setFlySpeed(value).build();
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(playerUuid).build());
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
+        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
+        builder.setFlySpeed(value);
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
     }
 
     @Override
@@ -1361,18 +1369,22 @@ public class PatchBukkitPlayer
             throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
         }
         var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid).toBuilder().setWalkSpeed(value).build();
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(abilities).setUuid(playerUuid).build());
+        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
+        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
+        builder.setWalkSpeed(value);
+        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
     }
 
     @Override
     public float getFlySpeed() {
-        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getFlySpeed();
+        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
+        return abilities != null ? abilities.getFlySpeed() : 0.05f;
     }
 
     @Override
     public float getWalkSpeed() {
-        return NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid)).getWalkSpeed();
+        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
+        return abilities != null ? abilities.getWalkSpeed() : 0.1f;
     }
 
     @Override

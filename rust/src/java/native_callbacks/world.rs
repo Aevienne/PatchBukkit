@@ -100,7 +100,7 @@ pub fn ffi_native_bridge_get_world_border_impl(
         .cloned()
         .or_else(|| worlds.first().cloned())?;
 
-    let wb = world.worldborder.blocking_lock();
+    let wb = world.worldborder.try_lock().ok()?;
 
     Some(crate::proto::patchbukkit::world::WorldBorderData {
         center_x: wb.center_x,
@@ -131,17 +131,19 @@ pub fn ffi_native_bridge_set_world_border_impl(
         .cloned()
         .or_else(|| worlds.first().cloned())?;
 
-    let mut wb = world.worldborder.blocking_lock();
-    wb.center_x = border_data.center_x;
-    wb.center_z = border_data.center_z;
-    wb.old_diameter = border_data.size;
-    wb.new_diameter = border_data.target_size;
-    wb.speed = border_data.speed;
-    wb.warning_time = border_data.warning_time;
-    wb.warning_blocks = border_data.warning_blocks;
-    wb.damage_per_block = border_data.damage_per_block as f32;
-    wb.buffer = border_data.damage_buffer as f32;
-    wb.portal_teleport_boundary = border_data.max_center_coordinate;
+    ctx.runtime.spawn(async move {
+        let mut wb = world.worldborder.lock().await;
+        wb.center_x = border_data.center_x;
+        wb.center_z = border_data.center_z;
+        wb.old_diameter = border_data.size;
+        wb.new_diameter = border_data.target_size;
+        wb.speed = border_data.speed;
+        wb.warning_time = border_data.warning_time;
+        wb.warning_blocks = border_data.warning_blocks;
+        wb.damage_per_block = border_data.damage_per_block as f32;
+        wb.buffer = border_data.damage_buffer as f32;
+        wb.portal_teleport_boundary = border_data.max_center_coordinate;
+    });
 
     Some(())
 }

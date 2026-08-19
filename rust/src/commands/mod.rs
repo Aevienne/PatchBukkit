@@ -25,8 +25,8 @@ pub struct JavaCommandExecutor {
 #[derive(Clone)]
 pub enum SimpleCommandSender {
     Console,
-    /// UUID, Name
-    Player(String, String),
+    /// UUID, Name, is_op
+    Player(String, String, bool),
 }
 
 pub struct AnyCommandNode {
@@ -94,7 +94,8 @@ impl ArgumentConsumer for AnyCommandNode {
 
         Box::pin(async move {
             let (tx, rx) = oneshot::channel();
-            self.command_tx
+            if let Err(e) = self
+                .command_tx
                 .send(JvmCommand::GetCommandTabComplete {
                     command_sender,
                     full_command: input.to_string(),
@@ -102,9 +103,15 @@ impl ArgumentConsumer for AnyCommandNode {
                     location,
                 })
                 .await
-                .unwrap();
+            {
+                tracing::warn!("Failed to send tab complete to JVM worker: {e}");
+                return Ok(None);
+            }
 
-            rx.await.unwrap()
+            match rx.await {
+                Ok(res) => res,
+                Err(_) => Ok(None),
+            }
         })
     }
 }
@@ -113,10 +120,15 @@ impl From<&CommandSender> for SimpleCommandSender {
     fn from(val: &CommandSender) -> Self {
         match val {
             CommandSender::Console | CommandSender::Rcon(_) | CommandSender::Dummy => Self::Console,
-            CommandSender::Player(player) => Self::Player(
-                player.gameprofile.id.to_string(),
-                player.gameprofile.name.clone(),
-            ),
+            CommandSender::Player(player) => {
+                let is_op =
+                    player.permission_lvl.load() >= pumpkin_util::permission::PermissionLvl::Two;
+                Self::Player(
+                    player.gameprofile.id.to_string(),
+                    player.gameprofile.name.clone(),
+                    is_op,
+                )
+            }
             CommandSender::CommandBlock(_block_entity, _world) => Self::Console,
         }
     }
@@ -129,6 +141,10 @@ impl CommandExecutor for JavaCommandExecutor {
         _server: &'a pumpkin::server::Server,
         args: &'a pumpkin::command::args::ConsumedArgs<'a>,
     ) -> pumpkin::command::CommandResult<'a> {
+        if let CommandSender::Player(player) = sender {
+            crate::java::native_callbacks::utils::cache_player(player.clone());
+        }
+
         Box::pin(async move {
             let full_command = match args.get(ARG_ANY) {
                 Some(Arg::Msg(msg)) => {
@@ -147,15 +163,21 @@ impl CommandExecutor for JavaCommandExecutor {
                 }
             };
 
-            let (tx, _rx) = oneshot::channel();
-            self.command_tx
+            let (tx, rx) = oneshot::channel();
+            if let Err(e) = self
+                .command_tx
                 .send(JvmCommand::TriggerCommand {
                     full_command,
                     respond_to: tx,
                     command_sender: sender.into(),
                 })
                 .await
-                .unwrap();
+            {
+                tracing::error!("Failed to send command to JVM worker: {e}");
+                return Ok(0);
+            }
+
+            let _ = rx.await;
             Ok(1)
         })
     }
@@ -185,4 +207,24 @@ pub fn init_java_command(
                 command_tx,
             }),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin::command::dispatcher::CommandDispatcher;
+
+    #[test]
+    fn test_init_java_command_registration() {
+        let mut dispatcher = CommandDispatcher::default();
+
+        let (tx, _rx) = mpsc::channel(100);
+        let names = vec!["fly".to_string(), "/fly".to_string(), "//fly".to_string()];
+        let tree = init_java_command("fly", tx, names, "Fly command");
+        dispatcher.register(tree, "patchbukkit:command.fly");
+
+        assert!(dispatcher.get_tree("fly").is_ok());
+        assert!(dispatcher.get_tree("/fly").is_ok());
+        assert!(dispatcher.get_tree("//fly").is_ok());
+    }
 }

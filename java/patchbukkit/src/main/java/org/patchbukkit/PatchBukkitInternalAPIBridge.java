@@ -72,7 +72,7 @@ public class PatchBukkitInternalAPIBridge implements InternalAPIBridge {
         JavaPlugin plugin,
         BooleanSupplier registrationCheck
     ) {
-        return null;
+        return new org.patchbukkit.events.PatchBukkitLifecycleEventManager(plugin, registrationCheck);
     }
 
     public String getStatisticCriteriaKey(Statistic statistic) {

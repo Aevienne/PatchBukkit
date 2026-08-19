@@ -12,12 +12,8 @@ use crate::{
 };
 
 pub fn ffi_native_bridge_get_entity_health_impl(request: Uuid) -> Option<EntityHealthResponse> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let health = tokio::task::block_in_place(|| {
-            ctx.runtime
-                .block_on(async { f64::from(player.living_entity.health.load()) })
-        });
+        let health = f64::from(player.living_entity.health.load());
 
         EntityHealthResponse {
             health,
@@ -155,24 +151,22 @@ pub fn ffi_native_bridge_is_op_impl(
         let op_lvl = ctx.plugin_context.server.basic_config.op_permission_level;
         let mut is_op = perm_lvl >= op_lvl || perm_lvl > pumpkin_util::PermissionLvl::Zero;
 
-        if !is_op {
-            let op_config = tokio::task::block_in_place(|| {
-                ctx.runtime
-                    .block_on(async { ctx.plugin_context.server.data.operator_config.read().await })
-            });
-            if op_config.get_entry(&player_uuid).is_some() {
-                is_op = true;
-            }
+        if !is_op
+            && let Ok(op_config) = ctx.plugin_context.server.data.operator_config.try_read()
+            && op_config.get_entry(&player_uuid).is_some()
+        {
+            is_op = true;
         }
 
         is_op
     })
     .unwrap_or_else(|| {
-        let op_config = tokio::task::block_in_place(|| {
-            ctx.runtime
-                .block_on(async { ctx.plugin_context.server.data.operator_config.read().await })
-        });
-        op_config.get_entry(&player_uuid).is_some()
+        ctx.plugin_context
+            .server
+            .data
+            .operator_config
+            .try_read()
+            .is_ok_and(|ops| ops.get_entry(&player_uuid).is_some())
     });
 
     Some(crate::proto::patchbukkit::entity::IsOpResponse { is_op })

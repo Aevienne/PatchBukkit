@@ -106,7 +106,6 @@ pub unsafe extern "C" fn {fn_name}(
     output_len: *mut usize,
 ) -> *mut u8 {{
     use prost::Message;
-    tracing::debug!("{fn_name}: called with input_ptr={{:?}}, input_len={{}}", input_ptr, input_len);
     if input_ptr.is_null() {{
         tracing::warn!("{fn_name}: null input (ptr={{:?}}, len={{}})", input_ptr, input_len);
         unsafe {{ *output_len = 0 }};
@@ -123,16 +122,13 @@ pub unsafe extern "C" fn {fn_name}(
         return std::ptr::null_mut();
     }};
     let Some(response) = {0}::{fn_name}_impl(request) else {{
-        tracing::debug!("{fn_name}: impl returned None");
         unsafe {{ *output_len = 0 }};
         return std::ptr::null_mut();
     }};
     let encoded = response.encode_to_vec().into_boxed_slice();
     let len = encoded.len();
     unsafe {{ *output_len = len }};
-    let ptr = Box::into_raw(encoded) as *mut u8;
-    tracing::debug!("{fn_name}: returning ptr={{:?}}, len={{}}", ptr, len);
-    ptr
+    Box::into_raw(encoded) as *mut u8
 }}
 "#,
                 self.impl_module
@@ -214,47 +210,61 @@ pub unsafe extern "C" fn ffi_free_bytes(ptr: *mut u8, len: usize) {{
     }}
 }}
 
-pub fn initialize_ffi_callbacks(jvm: &j4rs::Jvm) -> anyhow::Result<()> {{
-    use j4rs::InvocationArg;"#
+pub fn initialize_ffi_callbacks(env: &mut jni::Env) -> anyhow::Result<()> {{"#
     )
     .unwrap();
 
     for service in &state.services {
+        let class_slash = service.java_class.replace('.', "/");
+        let sig = format!("({})V", "J".repeat(service.methods.len()));
+
         writeln!(
             file,
             r#"
-    // Initialize {}
-    if let Err(e) = jvm.invoke_static(
-        "{}",
-        "init",
-        &["#,
-            service.java_class, service.java_class
+    // Initialize {class_slash}
+    {{
+        let args = ["#,
         )
         .unwrap();
 
         for method in &service.methods {
-            writeln!(file,
-                "            InvocationArg::try_from(crate::proto::{}::{} as *const () as i64)?.into_primitive()?,",
+            writeln!(
+                file,
+                "            jni::objects::JValue::Long(crate::proto::{}::{} as *const () as i64),",
                 service.module_path, method.fn_name
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         writeln!(
             file,
-            r#"        ],
-    ) {{
-        tracing::error!("Failed to initialize FFI service: {{:?}}", e);
-    }}
+            r#"        ];
+        if let Err(e) = env.call_static_method(
+            jni::jni_str!("{class_slash}"),
+            jni::jni_str!("init"),
+            jni::jni_sig!("{sig}"),
+            &args,
+        ) {{
+            env.exception_describe();
+            env.exception_clear();
+            tracing::error!("Failed to initialize FFI service {class_slash}: {{:?}}", e);
+            return Err(anyhow::anyhow!("Failed to initialize FFI service {class_slash}: {{e:?}}"));
+        }}
 
-    if let Err(e) = jvm.invoke_static(
-        "{}",
-        "initFree",
-        &[InvocationArg::try_from(ffi_free_bytes as *const () as i64)?.into_primitive()?],
-    ) {{
-        tracing::error!("Failed to initialize FFI service initFree: {{:?}}", e);
+        if let Err(e) = env.call_static_method(
+            jni::jni_str!("{class_slash}"),
+            jni::jni_str!("initFree"),
+            jni::jni_sig!("(J)V"),
+            &[jni::objects::JValue::Long(ffi_free_bytes as *const () as i64)],
+        ) {{
+            env.exception_describe();
+            env.exception_clear();
+            tracing::error!("Failed to initialize FFI service initFree on {class_slash}: {{:?}}", e);
+            return Err(anyhow::anyhow!("Failed to initialize FFI service initFree on {class_slash}: {{e:?}}"));
+        }}
     }}"#,
-            service.java_class
         )
+
         .unwrap();
     }
 
