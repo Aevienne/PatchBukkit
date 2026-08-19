@@ -46,7 +46,7 @@ protoc-bin-vendored = "3"
 glob = "0.3"
 
 [profile.release]
-lto = false # LTO is broken on CI cause of a Nightly rustc compiler bug
+lto = true
 
 [lints.clippy]
 # Groups

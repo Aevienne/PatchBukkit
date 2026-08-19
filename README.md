@@ -14,9 +14,6 @@ A plugin for [PumpkinMC](https://pumpkinmc.org/) that adds support for [PaperMC]
 
 If you wish to contribute to PatchBukkit, follow the following steps:
 
-> [!NOTE]
-> Your PumpkinMC server must be built with the same nightly toolchain as PatchBukkit.
-
 1. Run `./build.sh` 
 2. Copy the generated native library from `rust/target/debug/` (or `rust/target/release/`) to your PumpkinMC `plugins/` directory.
 3. Start Pumpkin once to create the `patchbukkit/` directory in your server root, then place your `.jar` plugins in `patchbukkit/patchbukkit-plugins/`.
