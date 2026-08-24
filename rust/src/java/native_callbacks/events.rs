@@ -1,61 +1,51 @@
+#![allow(clippy::all)]
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use pumpkin::plugin::EventPriority;
 
 use crate::events::handler::PatchBukkitEventHandler;
-use crate::java::native_callbacks::CALLBACK_CONTEXT;
 use crate::proto::patchbukkit::events::{
-    CallEventRequest, CallEventResponse, RegisterEventRequest,
+    CallEventRequest, CallEventResponse, FireEventResponse, RegisterEventRequest,
 };
 
-/// One Pumpkin handler per (plugin, event type). The Java side already deduplicates its
-/// registerEvent calls, but this guard also protects against direct HandlerList
-/// registrations and plugin reloads re-registering: every duplicate Pumpkin handler costs a
-/// full serialize + cross-thread round trip per event fire, and re-invokes listeners that
-/// already ran.
 static REGISTERED_EVENTS: LazyLock<Mutex<HashSet<(String, String)>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
-pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
+pub fn ffi_native_bridge_call_event_impl(request: CallEventRequest) -> Option<CallEventResponse> {
+    Some(CallEventResponse {
+        response: Some(FireEventResponse {
+            cancelled: false,
+            data: request.event,
+        }),
+    })
+}
 
-    {
-        let mut registered = REGISTERED_EVENTS.lock().ok()?;
-        if !registered.insert((request.plugin_name.clone(), request.event_type.clone())) {
-            tracing::debug!(
-                "Skipping duplicate native registration of '{}' for plugin '{}'",
-                request.event_type,
-                request.plugin_name
-            );
-            return Some(());
-        }
+pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> Option<()> {
+    let mut registered = REGISTERED_EVENTS.lock().unwrap();
+    if !registered.insert((request.plugin_name.clone(), request.event_type.clone())) {
+        return Some(());
     }
+
+    let context = crate::java::native_callbacks::CALLBACK_CONTEXT.get()?;
+    let plugin_context = context.plugin_context.clone();
+    let command_tx = context.command_tx.clone();
+
     let pumpkin_priority = match request.priority {
         0 => EventPriority::Lowest,
         1 => EventPriority::Low,
         2 => EventPriority::Normal,
         3 => EventPriority::High,
-        _ => EventPriority::Highest,
+        4 => EventPriority::Highest,
+        _ => EventPriority::Normal,
     };
 
-    tracing::info!(
-        "Plugin '{}' registering listener for '{}' (priority={:?}, blocking={})",
-        request.plugin_name,
-        request.event_type,
-        request.priority,
-        request.blocking
-    );
-
-    let command_tx = ctx.command_tx.clone();
-    let context = ctx.plugin_context.clone();
-
     match request.event_type.as_str() {
-        "org.bukkit.event.player.PlayerJoinEvent" => {
-            context
+        "org.bukkit.event.world.AsyncStructureGenerateEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_join::PlayerJoinEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_join::PlayerJoinEvent>,
+                    pumpkin::plugin::world::async_structure_generate::AsyncStructureGenerateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::async_structure_generate::AsyncStructureGenerateEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -65,11 +55,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerQuitEvent" => {
-            context
+        "org.bukkit.event.world.AsyncStructureSpawnEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_leave::PlayerLeaveEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_leave::PlayerLeaveEvent>,
+                    pumpkin::plugin::world::async_structure_spawn::AsyncStructureSpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::async_structure_spawn::AsyncStructureSpawnEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -79,11 +69,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerGameModeChangeEvent" => {
-            context
+        "org.bukkit.event.world.ChunkLoadEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_gamemode_change::PlayerGamemodeChangeEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_gamemode_change::PlayerGamemodeChangeEvent>,
+                    pumpkin::plugin::world::chunk_load::ChunkLoad,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::chunk_load::ChunkLoad>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -93,11 +83,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerInteractEvent" => {
-            context
+        "org.bukkit.event.world.ChunkPopulateEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_interact_event::PlayerInteractEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_interact_event::PlayerInteractEvent>,
+                    pumpkin::plugin::world::chunk_populate::ChunkPopulateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::chunk_populate::ChunkPopulateEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -107,11 +97,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockBreakEvent" => {
-            context
+        "org.bukkit.event.world.ChunkUnloadEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_break::BlockBreakEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_break::BlockBreakEvent>,
+                    pumpkin::plugin::world::chunk_save::ChunkSave,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::chunk_save::ChunkSave>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -121,11 +111,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockPlaceEvent" => {
-            context
+        "org.bukkit.event.world.EntitiesLoadEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_place::BlockPlaceEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_place::BlockPlaceEvent>,
+                    pumpkin::plugin::world::entities_load::EntitiesLoadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::entities_load::EntitiesLoadEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -135,11 +125,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.SignChangeEvent" => {
-            context
+        "org.bukkit.event.world.EntitiesUnloadEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::sign_change::SignChangeEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::sign_change::SignChangeEvent>,
+                    pumpkin::plugin::world::entities_unload::EntitiesUnloadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::entities_unload::EntitiesUnloadEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -149,11 +139,263 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockDamageEvent" => {
-            context
+        "org.bukkit.event.world.GenericGameEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_damage::BlockDamageEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_damage::BlockDamageEvent>,
+                    pumpkin::plugin::world::generic_game::GenericGameEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::generic_game::GenericGameEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.weather.LightningStrikeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::lightning_strike::LightningStrikeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::lightning_strike::LightningStrikeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.LootGenerateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::loot_generate::LootGenerateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::loot_generate::LootGenerateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.PortalCreateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::portal_create::PortalCreateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::portal_create::PortalCreateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.SpawnChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::spawn_change::SpawnChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::spawn_change::SpawnChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.StructureGrowEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::structure_grow::StructureGrowEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::structure_grow::StructureGrowEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.TimeSkipEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::time_skip::TimeSkipEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::time_skip::TimeSkipEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.weather.WeatherChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::weather_change::WeatherChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::weather_change::WeatherChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.weather.ThunderChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::weather_change::ThunderChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::weather_change::ThunderChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.WorldInitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::world_init::WorldInitEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::world_init::WorldInitEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.WorldLoadEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::world_load::WorldLoadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::world_load::WorldLoadEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.WorldUnloadEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::world_load::WorldUnloadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::world_load::WorldUnloadEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.world.WorldSaveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::world::world_save::WorldSaveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::world::world_save::WorldSaveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.ServerListPingEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::list_ping::ServerListPingEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::list_ping::ServerListPingEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.MapInitializeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::map_initialize::MapInitializeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::map_initialize::MapInitializeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.PluginDisableEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::plugin_disable::PluginDisableEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::plugin_disable::PluginDisableEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.PluginEnableEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::plugin_enable::PluginEnableEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::plugin_enable::PluginEnableEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.RemoteServerCommandEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::remote_server_command::RemoteServerCommandEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::remote_server_command::RemoteServerCommandEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.BroadcastMessageEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::server_broadcast::ServerBroadcastEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::server_broadcast::ServerBroadcastEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -164,7 +406,7 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                 );
         }
         "org.bukkit.event.server.ServerCommandEvent" => {
-            context
+            plugin_context
                 .register_event::<
                     pumpkin::plugin::server::server_command::ServerCommandEvent,
                     PatchBukkitEventHandler<pumpkin::plugin::server::server_command::ServerCommandEvent>,
@@ -177,11 +419,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockIgniteEvent" => {
-            context
+        "org.bukkit.event.server.ServerLoadEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_ignite::BlockIgniteEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_ignite::BlockIgniteEvent>,
+                    pumpkin::plugin::server::server_load::ServerLoadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::server_load::ServerLoadEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -191,11 +433,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockGrowEvent" => {
-            context
+        "com.destroystokyo.paper.event.server.ServerTickEndEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_grow::BlockGrowEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_grow::BlockGrowEvent>,
+                    pumpkin::plugin::server::server_tick_end::ServerTickEndEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::server_tick_end::ServerTickEndEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -205,11 +447,683 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.block.BlockFormEvent" => {
-            context
+        "com.destroystokyo.paper.event.server.ServerTickStartEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::block::block_form::BlockFormEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::block::block_form::BlockFormEvent>,
+                    pumpkin::plugin::server::server_tick_start::ServerTickStartEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::server_tick_start::ServerTickStartEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.ServiceRegisterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::service_register::ServiceRegisterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::service_register::ServiceRegisterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.ServiceUnregisterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::service_unregister::ServiceUnregisterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::service_unregister::ServiceUnregisterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.server.TabCompleteEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::server::tab_complete::TabCompleteEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::server::tab_complete::TabCompleteEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleBlockCollisionEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_block_collision::VehicleBlockCollisionEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_block_collision::VehicleBlockCollisionEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleCollisionEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_collision::VehicleCollisionEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_collision::VehicleCollisionEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleCreateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_create::VehicleCreateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_create::VehicleCreateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleDamageEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_damage::VehicleDamageEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_damage::VehicleDamageEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleDestroyEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_destroy::VehicleDestroyEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_destroy::VehicleDestroyEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleEnterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_enter::VehicleEnterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_enter::VehicleEnterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleEntityCollisionEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_entity_collision::VehicleEntityCollisionEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_entity_collision::VehicleEntityCollisionEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleExitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_exit::VehicleExitEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_exit::VehicleExitEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleMoveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_move::VehicleMoveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_move::VehicleMoveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.vehicle.VehicleUpdateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::vehicle::vehicle_update::VehicleUpdateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::vehicle::vehicle_update::VehicleUpdateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.BrewEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::brew::BrewEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::brew::BrewEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.BrewingStandFuelEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::brewing_stand_fuel::BrewingStandFuelEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::brewing_stand_fuel::BrewingStandFuelEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.CraftItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::craft_item::CraftItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::craft_item::CraftItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.FurnaceBurnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::furnace_burn::FurnaceBurnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::furnace_burn::FurnaceBurnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.FurnaceExtractEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::furnace_extract::FurnaceExtractEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::furnace_extract::FurnaceExtractEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.FurnaceSmeltEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::furnace_smelt::FurnaceSmeltEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::furnace_smelt::FurnaceSmeltEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.FurnaceStartSmeltEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::furnace_start_smelt::FurnaceStartSmeltEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::furnace_start_smelt::FurnaceStartSmeltEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.HopperInventorySearchEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::hopper_inventory_search::HopperInventorySearchEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::hopper_inventory_search::HopperInventorySearchEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryCreativeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_creative::InventoryCreativeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_creative::InventoryCreativeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryDragEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_drag::InventoryDragEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_drag::InventoryDragEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryInteractEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_interact::InventoryInteractEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_interact::InventoryInteractEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryMoveItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_move_item::InventoryMoveItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_move_item::InventoryMoveItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryOpenEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_open::InventoryOpenEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_open::InventoryOpenEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryPickupItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::inventory_pickup_item::InventoryPickupItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::inventory_pickup_item::InventoryPickupItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.PrepareAnvilEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::prepare_anvil::PrepareAnvilEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::prepare_anvil::PrepareAnvilEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.PrepareGrindstoneEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::prepare_grindstone::PrepareGrindstoneEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::prepare_grindstone::PrepareGrindstoneEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.PrepareInventoryResultEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::prepare_inventory_result::PrepareInventoryResultEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::prepare_inventory_result::PrepareInventoryResultEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.PrepareItemCraftEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::prepare_item_craft::PrepareItemCraftEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::prepare_item_craft::PrepareItemCraftEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.PrepareSmithingEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::prepare_smithing::PrepareSmithingEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::prepare_smithing::PrepareSmithingEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.SmithItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::smith_item::SmithItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::smith_item::SmithItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.TradeSelectEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::inventory::trade_select::TradeSelectEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::inventory::trade_select::TradeSelectEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BellResonateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::bell_resonate::BellResonateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::bell_resonate::BellResonateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BellRingEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::bell_ring::BellRingEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::bell_ring::BellRingEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockBreakEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_break::BlockBreakEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_break::BlockBreakEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockBurnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_burn::BlockBurnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_burn::BlockBurnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockCanBuildEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_can_build::BlockCanBuildEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_can_build::BlockCanBuildEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockCookEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_cook::BlockCookEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_cook::BlockCookEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDamageEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_damage::BlockDamageEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_damage::BlockDamageEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDamageAbortEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_damage_abort::BlockDamageAbortEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_damage_abort::BlockDamageAbortEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDispenseEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_dispense::BlockDispenseEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_dispense::BlockDispenseEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDispenseArmorEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_dispense_armor::BlockDispenseArmorEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_dispense_armor::BlockDispenseArmorEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDispenseLootEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_dispense_loot::BlockDispenseLootEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_dispense_loot::BlockDispenseLootEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockDropItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_drop_item::BlockDropItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_drop_item::BlockDropItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockExpEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_exp::BlockExpEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_exp::BlockExpEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockExplodeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_explode::BlockExplodeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_explode::BlockExplodeEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -220,7 +1134,7 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                 );
         }
         "org.bukkit.event.block.BlockFadeEvent" => {
-            context
+            plugin_context
                 .register_event::<
                     pumpkin::plugin::block::block_fade::BlockFadeEvent,
                     PatchBukkitEventHandler<pumpkin::plugin::block::block_fade::BlockFadeEvent>,
@@ -233,8 +1147,1352 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
+        "org.bukkit.event.block.BlockFertilizeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_fertilize::BlockFertilizeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_fertilize::BlockFertilizeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockFormEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_form::BlockFormEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_form::BlockFormEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockFromToEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_from_to::BlockFromToEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_from_to::BlockFromToEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockGrowEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_grow::BlockGrowEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_grow::BlockGrowEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockIgniteEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_ignite::BlockIgniteEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_ignite::BlockIgniteEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockMultiPlaceEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_multi_place::BlockMultiPlaceEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_multi_place::BlockMultiPlaceEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockPhysicsEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_physics::BlockPhysicsEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_physics::BlockPhysicsEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockPistonExtendEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_piston::BlockPistonExtendEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_piston::BlockPistonExtendEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockPistonRetractEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_piston::BlockPistonRetractEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_piston::BlockPistonRetractEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockPlaceEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_place::BlockPlaceEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_place::BlockPlaceEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockReceiveGameEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_receive_game::BlockReceiveGameEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_receive_game::BlockReceiveGameEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockRedstoneEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_redstone::BlockRedstoneEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_redstone::BlockRedstoneEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockShearEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_shear_entity::BlockShearEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_shear_entity::BlockShearEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BlockSpreadEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::block_spread::BlockSpreadEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::block_spread::BlockSpreadEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.BrewingStartEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::brewing_start::BrewingStartEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::brewing_start::BrewingStartEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.CampfireStartEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::campfire_start::CampfireStartEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::campfire_start::CampfireStartEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.CauldronLevelChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::cauldron_level_change::CauldronLevelChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::cauldron_level_change::CauldronLevelChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.CrafterCraftEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::crafter_craft::CrafterCraftEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::crafter_craft::CrafterCraftEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.EntityBlockFormEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::entity_block_form::EntityBlockFormEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::entity_block_form::EntityBlockFormEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.FluidLevelChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::fluid_level_change::FluidLevelChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::fluid_level_change::FluidLevelChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.InventoryBlockStartEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::inventory_block_start::InventoryBlockStartEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::inventory_block_start::InventoryBlockStartEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.LeavesDecayEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::leaves_decay::LeavesDecayEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::leaves_decay::LeavesDecayEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.MoistureChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::moisture_change::MoistureChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::moisture_change::MoistureChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.NotePlayEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::note_play::NotePlayEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::note_play::NotePlayEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.SculkBloomEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::sculk_bloom::SculkBloomEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::sculk_bloom::SculkBloomEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.SignChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::sign_change::SignChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::sign_change::SignChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.SpongeAbsorbEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::sponge_absorb::SpongeAbsorbEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::sponge_absorb::SpongeAbsorbEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.TNTPrimeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::tnt_prime::TNTPrimeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::tnt_prime::TNTPrimeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.block.VaultDisplayItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::block::vault_display_item::VaultDisplayItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::block::vault_display_item::VaultDisplayItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.AsyncPlayerChatEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::async_player_chat::AsyncPlayerChatEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::async_player_chat::AsyncPlayerChatEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.AsyncPlayerPreLoginEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::async_player_pre_login::AsyncPlayerPreLoginEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::async_player_pre_login::AsyncPlayerPreLoginEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerChangedMainHandEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::changed_main_hand::PlayerChangedMainHandEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::changed_main_hand::PlayerChangedMainHandEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerEggThrowEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::egg_throw::PlayerEggThrowEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::egg_throw::PlayerEggThrowEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerExpChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::exp_change::PlayerExpChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::exp_change::PlayerExpChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerFishEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::fish::PlayerFishEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::fish::PlayerFishEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryCloseEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::inventory_close::InventoryCloseEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::inventory_close::InventoryCloseEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.inventory.InventoryClickEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::inventory_interact::InventoryClickEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::inventory_interact::InventoryClickEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerItemHeldEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::item_held::PlayerItemHeldEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::item_held::PlayerItemHeldEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerAdvancementDoneEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_advancement_done::PlayerAdvancementDoneEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_advancement_done::PlayerAdvancementDoneEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerAnimationEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_animation::PlayerAnimationEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_animation::PlayerAnimationEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerArmorStandManipulateEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_armor_stand_manipulate::PlayerArmorStandManipulateEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_armor_stand_manipulate::PlayerArmorStandManipulateEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerBedEnterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_bed::PlayerBedEnterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_bed::PlayerBedEnterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerBedLeaveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_bed::PlayerBedLeaveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_bed::PlayerBedLeaveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerBucketEmptyEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_bucket::PlayerBucketEmptyEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_bucket::PlayerBucketEmptyEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerBucketFillEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_bucket::PlayerBucketFillEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_bucket::PlayerBucketFillEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerBucketEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_bucket_entity::PlayerBucketEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_bucket_entity::PlayerBucketEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerChangedWorldEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_changed_world::PlayerChangedWorldEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_changed_world::PlayerChangedWorldEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerChannelEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_channel::PlayerChannelEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_channel::PlayerChannelEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerChatEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_chat::PlayerChatEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_chat::PlayerChatEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerCommandPreprocessEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_command_preprocess::PlayerCommandPreprocessEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_command_preprocess::PlayerCommandPreprocessEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerCommandSendEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_command_send::PlayerCommandSendEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_command_send::PlayerCommandSendEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerDropItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_drop_item::PlayerDropItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_drop_item::PlayerDropItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerEditBookEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_edit_book::PlayerEditBookEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_edit_book::PlayerEditBookEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "com.destroystokyo.paper.event.player.PlayerElytraBoostEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_elytra_boost::PlayerElytraBoostEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_elytra_boost::PlayerElytraBoostEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerExpCooldownChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_exp_cooldown_change::PlayerExpCooldownChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_exp_cooldown_change::PlayerExpCooldownChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerGameModeChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_gamemode_change::PlayerGamemodeChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_gamemode_change::PlayerGamemodeChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerHarvestBlockEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_harvest_block::PlayerHarvestBlockEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_harvest_block::PlayerHarvestBlockEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerHideEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_hide_entity::PlayerHideEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_hide_entity::PlayerHideEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerInputEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_input::PlayerInputEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_input::PlayerInputEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerInteractAtEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_interact_at_entity::PlayerInteractAtEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_interact_at_entity::PlayerInteractAtEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerInteractEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_interact_entity_event::PlayerInteractEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_interact_entity_event::PlayerInteractEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerInteractEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_interact_event::PlayerInteractEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_interact_event::PlayerInteractEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerItemBreakEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_item_break::PlayerItemBreakEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_item_break::PlayerItemBreakEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerItemConsumeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_item_consume::PlayerItemConsumeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_item_consume::PlayerItemConsumeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerItemDamageEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_item_damage::PlayerItemDamageEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_item_damage::PlayerItemDamageEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerItemMendEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_item_mend::PlayerItemMendEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_item_mend::PlayerItemMendEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerJoinEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_join::PlayerJoinEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_join::PlayerJoinEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerKickEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_kick::PlayerKickEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_kick::PlayerKickEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PlayerLeashEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_leash_entity::PlayerLeashEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_leash_entity::PlayerLeashEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerQuitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_leave::PlayerLeaveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_leave::PlayerLeaveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerLevelChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_level_change::PlayerLevelChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_level_change::PlayerLevelChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerLinksSendEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_links_send::PlayerLinksSendEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_links_send::PlayerLinksSendEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerLocaleChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_locale_change::PlayerLocaleChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_locale_change::PlayerLocaleChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerLoginEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_login::PlayerLoginEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_login::PlayerLoginEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerMoveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_move::PlayerMoveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_move::PlayerMoveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "io.papermc.paper.event.player.PlayerNameEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_name_entity::PlayerNameEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_name_entity::PlayerNameEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "io.papermc.paper.event.player.PlayerOpenSignEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_open_sign::PlayerOpenSignEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_open_sign::PlayerOpenSignEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerPickupArrowEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_pickup_arrow::PlayerPickupArrowEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_pickup_arrow::PlayerPickupArrowEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerPortalEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_portal::PlayerPortalEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_portal::PlayerPortalEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerPreLoginEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_pre_login::PlayerPreLoginEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_pre_login::PlayerPreLoginEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRecipeBookClickEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_recipe_book_click::PlayerRecipeBookClickEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_recipe_book_click::PlayerRecipeBookClickEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRecipeBookSettingsChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_recipe_book_settings_change::PlayerRecipeBookSettingsChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_recipe_book_settings_change::PlayerRecipeBookSettingsChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRecipeDiscoverEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_recipe_discover::PlayerRecipeDiscoverEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_recipe_discover::PlayerRecipeDiscoverEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRegisterChannelEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_register_channel::PlayerRegisterChannelEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_register_channel::PlayerRegisterChannelEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerResourcePackStatusEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_resource_pack_status::PlayerResourcePackStatusEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_resource_pack_status::PlayerResourcePackStatusEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRespawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_respawn::PlayerRespawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_respawn::PlayerRespawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerRiptideEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_riptide::PlayerRiptideEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_riptide::PlayerRiptideEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerShearEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_shear_entity::PlayerShearEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_shear_entity::PlayerShearEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerShowEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_show_entity::PlayerShowEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_show_entity::PlayerShowEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerSpawnChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_spawn_change::PlayerSpawnChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_spawn_change::PlayerSpawnChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.spigotmc.event.player.PlayerSpawnLocationEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_spawn_location::PlayerSpawnLocationEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_spawn_location::PlayerSpawnLocationEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerStatisticIncrementEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_statistic_increment::PlayerStatisticIncrementEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_statistic_increment::PlayerStatisticIncrementEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerSwapHandItemsEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_swap_hands::PlayerSwapHandItemsEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_swap_hands::PlayerSwapHandItemsEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerTakeLecternBookEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_take_lectern_book::PlayerTakeLecternBookEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_take_lectern_book::PlayerTakeLecternBookEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerTeleportEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_teleport::PlayerTeleportEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_teleport::PlayerTeleportEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.player.PlayerToggleFlightEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::player::player_toggle_flight_event::PlayerToggleFlightEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_toggle_flight_event::PlayerToggleFlightEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
         "org.bukkit.event.player.PlayerToggleSneakEvent" => {
-            context
+            plugin_context
                 .register_event::<
                     pumpkin::plugin::player::player_toggle_sneak_event::PlayerToggleSneakEvent,
                     PatchBukkitEventHandler<pumpkin::plugin::player::player_toggle_sneak_event::PlayerToggleSneakEvent>,
@@ -248,7 +2506,7 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                 );
         }
         "org.bukkit.event.player.PlayerToggleSprintEvent" => {
-            context
+            plugin_context
                 .register_event::<
                     pumpkin::plugin::player::player_toggle_sprint_event::PlayerToggleSprintEvent,
                     PatchBukkitEventHandler<pumpkin::plugin::player::player_toggle_sprint_event::PlayerToggleSprintEvent>,
@@ -261,11 +2519,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerToggleFlightEvent" => {
-            context
+        "org.bukkit.event.player.PlayerUnleashEntityEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_toggle_flight_event::PlayerToggleFlightEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_toggle_flight_event::PlayerToggleFlightEvent>,
+                    pumpkin::plugin::player::player_unleash_entity::PlayerUnleashEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_unleash_entity::PlayerUnleashEntityEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -275,11 +2533,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerMoveEvent" => {
-            context
+        "org.bukkit.event.player.PlayerUnregisterChannelEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_move::PlayerMoveEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_move::PlayerMoveEvent>,
+                    pumpkin::plugin::player::player_unregister_channel::PlayerUnregisterChannelEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_unregister_channel::PlayerUnregisterChannelEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -289,14 +2547,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.PlayerInteractEntityEvent"
-        | "org.bukkit.event.player.PlayerInteractAtEntityEvent"
-        | "org.bukkit.event.entity.EntityDamageByEntityEvent"
-        | "org.bukkit.event.entity.EntityDamageEvent" => {
-            context
+        "org.bukkit.event.player.PlayerVelocityEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_interact_entity_event::PlayerInteractEntityEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_interact_entity_event::PlayerInteractEntityEvent>,
+                    pumpkin::plugin::player::player_velocity::PlayerVelocityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::player::player_velocity::PlayerVelocityEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -306,12 +2561,11 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        "org.bukkit.event.player.AsyncPlayerChatEvent"
-        | "org.bukkit.event.player.PlayerChatEvent" => {
-            context
+        "org.bukkit.event.hanging.HangingBreakEvent" => {
+            plugin_context
                 .register_event::<
-                    pumpkin::plugin::player::player_chat::PlayerChatEvent,
-                    PatchBukkitEventHandler<pumpkin::plugin::player::player_chat::PlayerChatEvent>,
+                    pumpkin::plugin::hanging::hanging_break::HangingBreakEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::hanging::hanging_break::HangingBreakEvent>,
                 >(
                     Arc::new(PatchBukkitEventHandler::new(
                         request.plugin_name.clone(),
@@ -321,115 +2575,1188 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
                     request.blocking,
                 );
         }
-        // Player Events
-        "org.bukkit.event.player.PlayerDropItemEvent"
-        | "org.bukkit.event.player.PlayerItemHeldEvent"
-        | "org.bukkit.event.player.PlayerCommandPreprocessEvent"
-        | "org.bukkit.event.player.PlayerRespawnEvent"
-        | "org.bukkit.event.player.PlayerTeleportEvent"
-        | "org.bukkit.event.player.PlayerChangedWorldEvent"
-        | "org.bukkit.event.player.PlayerBedEnterEvent"
-        | "org.bukkit.event.player.PlayerBedLeaveEvent"
-        | "org.bukkit.event.player.PlayerItemConsumeEvent"
-        | "org.bukkit.event.player.PlayerItemDamageEvent"
-        | "org.bukkit.event.player.PlayerItemBreakEvent"
-        | "org.bukkit.event.player.PlayerAnimationEvent"
-        | "org.bukkit.event.player.PlayerBucketEmptyEvent"
-        | "org.bukkit.event.player.PlayerBucketFillEvent"
-        | "org.bukkit.event.player.PlayerAdvancementDoneEvent"
-        | "org.bukkit.event.player.PlayerExpChangeEvent"
-        | "org.bukkit.event.player.PlayerLevelChangeEvent"
-        | "org.bukkit.event.player.PlayerResourcePackStatusEvent"
-        | "org.bukkit.event.player.PlayerStatisticIncrementEvent"
-        | "org.bukkit.event.player.PlayerPortalEvent"
-        | "org.bukkit.event.player.PlayerKickEvent"
-        | "org.bukkit.event.player.PlayerLocaleChangeEvent"
-        | "org.bukkit.event.player.PlayerArmorStandManipulateEvent"
-        | "org.bukkit.event.player.PlayerTakeLecternBookEvent"
-        | "org.bukkit.event.player.PlayerUnleashEntityEvent"
-        | "org.bukkit.event.player.PlayerShearEntityEvent"
-        | "org.bukkit.event.player.PlayerEggThrowEvent"
-        | "org.bukkit.event.player.PlayerFishEvent"
-        | "org.bukkit.event.player.PlayerEvent"
-        // Entity Events
-        | "org.bukkit.event.entity.EntityDamageByBlockEvent"
-        | "org.bukkit.event.entity.EntityDeathEvent"
-        | "org.bukkit.event.entity.PlayerDeathEvent"
-        | "org.bukkit.event.entity.CreatureSpawnEvent"
-        | "org.bukkit.event.entity.EntitySpawnEvent"
-        | "org.bukkit.event.entity.EntityTargetEvent"
-        | "org.bukkit.event.entity.EntityTargetLivingEntityEvent"
-        | "org.bukkit.event.entity.EntityCombustEvent"
-        | "org.bukkit.event.entity.EntityCombustByEntityEvent"
-        | "org.bukkit.event.entity.EntityRegainHealthEvent"
-        | "org.bukkit.event.entity.EntityShootBowEvent"
-        | "org.bukkit.event.entity.EntityToggleGlideEvent"
-        | "org.bukkit.event.entity.EntityPickupItemEvent"
-        | "org.bukkit.event.entity.EntityDropItemEvent"
-        | "org.bukkit.event.entity.EntityExplodeEvent"
-        | "org.bukkit.event.entity.ExplosionPrimeEvent"
-        | "org.bukkit.event.entity.FoodLevelChangeEvent"
-        | "org.bukkit.event.entity.ProjectileHitEvent"
-        | "org.bukkit.event.entity.ProjectileLaunchEvent"
-        | "org.bukkit.event.entity.EntityInteractEvent"
-        | "org.bukkit.event.entity.EntityTransformEvent"
-        | "org.bukkit.event.entity.EntityDismountEvent"
-        | "org.bukkit.event.entity.EntityMountEvent"
+        "org.bukkit.event.hanging.HangingBreakByEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::hanging::hanging_break_by_entity::HangingBreakByEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::hanging::hanging_break_by_entity::HangingBreakByEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.hanging.HangingPlaceEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::hanging::hanging_place::HangingPlaceEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::hanging::hanging_place::HangingPlaceEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.AreaEffectCloudApplyEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::area_effect_cloud_apply::AreaEffectCloudApplyEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::area_effect_cloud_apply::AreaEffectCloudApplyEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ArrowBodyCountChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::arrow_body_count_change::ArrowBodyCountChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::arrow_body_count_change::ArrowBodyCountChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.BatToggleSleepEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::bat_toggle_sleep::BatToggleSleepEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::bat_toggle_sleep::BatToggleSleepEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.CreatureSpawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::creature_spawn::CreatureSpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::creature_spawn::CreatureSpawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.CreeperPowerEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::creeper_power::CreeperPowerEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::creeper_power::CreeperPowerEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EnderDragonChangePhaseEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::ender_dragon_change_phase::EnderDragonChangePhaseEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::ender_dragon_change_phase::EnderDragonChangePhaseEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityAirChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_air_change::EntityAirChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_air_change::EntityAirChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityBreakDoorEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_break_door::EntityBreakDoorEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_break_door::EntityBreakDoorEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityBreedEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_breed::EntityBreedEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_breed::EntityBreedEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityChangeBlockEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_change_block::EntityChangeBlockEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_change_block::EntityChangeBlockEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityCombustEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_combust::EntityCombustEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_combust::EntityCombustEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityCombustByBlockEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_combust_by_block::EntityCombustByBlockEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_combust_by_block::EntityCombustByBlockEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityCombustByEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_combust_by_entity::EntityCombustByEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_combust_by_entity::EntityCombustByEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDamageEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_damage::EntityDamageEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_damage::EntityDamageEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDamageByBlockEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_damage_by_block::EntityDamageByBlockEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_damage_by_block::EntityDamageByBlockEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDamageByEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_damage_by_entity::EntityDamageByEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_damage_by_entity::EntityDamageByEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDeathEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_death::EntityDeathEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_death::EntityDeathEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PlayerDeathEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_death::PlayerDeathEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_death::PlayerDeathEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDismountEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_dismount::EntityDismountEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_dismount::EntityDismountEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityDropItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_drop_item::EntityDropItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_drop_item::EntityDropItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "io.papermc.paper.event.entity.EntityDyeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_dye::EntityDyeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_dye::EntityDyeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityEnterBlockEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_enter_block::EntityEnterBlockEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_enter_block::EntityEnterBlockEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityEnterLoveModeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_enter_love_mode::EntityEnterLoveModeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_enter_love_mode::EntityEnterLoveModeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityExhaustionEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_exhaustion::EntityExhaustionEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_exhaustion::EntityExhaustionEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityExplodeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_explode::EntityExplodeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_explode::EntityExplodeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityInteractEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_interact::EntityInteractEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_interact::EntityInteractEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityKnockbackEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_knockback::EntityKnockbackEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_knockback::EntityKnockbackEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityKnockbackByEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_knockback_by_entity::EntityKnockbackByEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_knockback_by_entity::EntityKnockbackByEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityMountEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_mount::EntityMountEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_mount::EntityMountEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPickupItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_pickup_item::EntityPickupItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_pickup_item::EntityPickupItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPlaceEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_place::EntityPlaceEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_place::EntityPlaceEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPortalEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_portal::EntityPortalEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_portal::EntityPortalEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPortalEnterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_portal_enter::EntityPortalEnterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_portal_enter::EntityPortalEnterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPortalExitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_portal_exit::EntityPortalExitEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_portal_exit::EntityPortalExitEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPoseChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_pose_change::EntityPoseChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_pose_change::EntityPoseChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityPotionEffectEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_potion_effect::EntityPotionEffectEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_potion_effect::EntityPotionEffectEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityRegainHealthEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_regain_health::EntityRegainHealthEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_regain_health::EntityRegainHealthEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityRemoveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_remove::EntityRemoveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_remove::EntityRemoveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityResurrectEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_resurrect::EntityResurrectEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_resurrect::EntityResurrectEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityShootBowEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_shoot_bow::EntityShootBowEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_shoot_bow::EntityShootBowEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntitySpawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_spawn::EntitySpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_spawn::EntitySpawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntitySpellCastEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_spell_cast::EntitySpellCastEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_spell_cast::EntitySpellCastEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityTameEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_tame::EntityTameEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_tame::EntityTameEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityTargetEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_target::EntityTargetEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_target::EntityTargetEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityTargetLivingEntityEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_target_living_entity::EntityTargetLivingEntityEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_target_living_entity::EntityTargetLivingEntityEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityTeleportEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_teleport::EntityTeleportEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_teleport::EntityTeleportEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityToggleGlideEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_toggle_glide::EntityToggleGlideEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_toggle_glide::EntityToggleGlideEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityToggleSwimEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_toggle_swim::EntityToggleSwimEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_toggle_swim::EntityToggleSwimEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityTransformEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_transform::EntityTransformEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_transform::EntityTransformEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.EntityUnleashEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::entity_unleash::EntityUnleashEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::entity_unleash::EntityUnleashEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ExpBottleEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::exp_bottle::ExpBottleEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::exp_bottle::ExpBottleEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ExplosionPrimeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::explosion_prime::ExplosionPrimeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::explosion_prime::ExplosionPrimeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.FireworkExplodeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::firework_explode::FireworkExplodeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::firework_explode::FireworkExplodeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.FoodLevelChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::food_level_change::FoodLevelChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::food_level_change::FoodLevelChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.HorseJumpEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::horse_jump::HorseJumpEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::horse_jump::HorseJumpEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ItemDespawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::item_despawn::ItemDespawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::item_despawn::ItemDespawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ItemMergeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::item_merge::ItemMergeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::item_merge::ItemMergeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ItemSpawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::item_spawn::ItemSpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::item_spawn::ItemSpawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.LingeringPotionSplashEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::lingering_potion_splash::LingeringPotionSplashEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::lingering_potion_splash::LingeringPotionSplashEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PigZapEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::pig_zap::PigZapEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::pig_zap::PigZapEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PigZombieAngerEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::pig_zombie_anger::PigZombieAngerEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::pig_zombie_anger::PigZombieAngerEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PiglinBarterEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::piglin_barter::PiglinBarterEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::piglin_barter::PiglinBarterEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.PotionSplashEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::potion_splash::PotionSplashEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::potion_splash::PotionSplashEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ProjectileHitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::projectile_hit::ProjectileHitEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::projectile_hit::ProjectileHitEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.ProjectileLaunchEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::projectile_launch::ProjectileLaunchEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::projectile_launch::ProjectileLaunchEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.SheepDyeWoolEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::sheep_dye_wool::SheepDyeWoolEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::sheep_dye_wool::SheepDyeWoolEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.SheepRegrowWoolEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::sheep_regrow_wool::SheepRegrowWoolEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::sheep_regrow_wool::SheepRegrowWoolEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.SlimeSplitEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::slime_split::SlimeSplitEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::slime_split::SlimeSplitEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.SpawnerSpawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::spawner_spawn::SpawnerSpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::spawner_spawn::SpawnerSpawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.StriderTemperatureChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::strider_temperature_change::StriderTemperatureChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::strider_temperature_change::StriderTemperatureChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.TrialSpawnerSpawnEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::trial_spawner_spawn::TrialSpawnerSpawnEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::trial_spawner_spawn::TrialSpawnerSpawnEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.VillagerAcquireTradeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::villager_acquire_trade::VillagerAcquireTradeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::villager_acquire_trade::VillagerAcquireTradeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.VillagerCareerChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::villager_career_change::VillagerCareerChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::villager_career_change::VillagerCareerChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.entity.VillagerReplenishTradeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::villager_replenish_trade::VillagerReplenishTradeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::villager_replenish_trade::VillagerReplenishTradeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "io.papermc.paper.event.entity.WardenAngerChangeEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::entity::warden_anger_change::WardenAngerChangeEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::entity::warden_anger_change::WardenAngerChangeEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.raid.RaidFinishEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::raid::raid_finish::RaidFinishEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::raid::raid_finish::RaidFinishEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.raid.RaidSpawnWaveEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::raid::raid_spawn_wave::RaidSpawnWaveEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::raid::raid_spawn_wave::RaidSpawnWaveEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.raid.RaidStopEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::raid::raid_stop::RaidStopEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::raid::raid_stop::RaidStopEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.raid.RaidTriggerEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::raid::raid_trigger::RaidTriggerEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::raid::raid_trigger::RaidTriggerEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.enchantment.EnchantItemEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::enchantment::enchant_item::EnchantItemEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::enchantment::enchant_item::EnchantItemEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        "org.bukkit.event.enchantment.PrepareItemEnchantEvent" => {
+            plugin_context
+                .register_event::<
+                    pumpkin::plugin::enchantment::prepare_item_enchant::PrepareItemEnchantEvent,
+                    PatchBukkitEventHandler<pumpkin::plugin::enchantment::prepare_item_enchant::PrepareItemEnchantEvent>,
+                >(
+                    Arc::new(PatchBukkitEventHandler::new(
+                        request.plugin_name.clone(),
+                        command_tx.clone(),
+                    )),
+                    pumpkin_priority,
+                    request.blocking,
+                );
+        }
+        // Generic fallback Bukkit event categories
+        "org.bukkit.event.player.PlayerEvent"
         | "org.bukkit.event.entity.EntityEvent"
-        // Block Events
-        | "org.bukkit.event.block.BlockSpreadEvent"
-        | "org.bukkit.event.block.BlockBurnEvent"
-        | "org.bukkit.event.block.BlockPhysicsEvent"
-        | "org.bukkit.event.block.BlockRedstoneEvent"
-        | "org.bukkit.event.block.BlockPistonExtendEvent"
-        | "org.bukkit.event.block.BlockPistonRetractEvent"
-        | "org.bukkit.event.block.BlockExplodeEvent"
-        | "org.bukkit.event.block.BlockFromToEvent"
-        | "org.bukkit.event.block.BlockDispenseEvent"
-        | "org.bukkit.event.block.LeavesDecayEvent"
-        | "org.bukkit.event.block.BlockCanBuildEvent"
         | "org.bukkit.event.block.BlockEvent"
-        // Inventory Events
-        | "org.bukkit.event.inventory.InventoryClickEvent"
-        | "org.bukkit.event.inventory.InventoryCloseEvent"
-        | "org.bukkit.event.inventory.InventoryOpenEvent"
-        | "org.bukkit.event.inventory.InventoryDragEvent"
-        | "org.bukkit.event.inventory.InventoryCreativeEvent"
-        | "org.bukkit.event.inventory.CraftItemEvent"
-        | "org.bukkit.event.inventory.PrepareItemCraftEvent"
-        | "org.bukkit.event.inventory.PrepareAnvilEvent"
-        | "org.bukkit.event.inventory.PrepareSmithingEvent"
-        | "org.bukkit.event.inventory.FurnaceSmeltEvent"
-        | "org.bukkit.event.inventory.FurnaceBurnEvent"
         | "org.bukkit.event.inventory.InventoryEvent"
-        // Server / World / Weather Events
-        | "org.bukkit.event.server.PluginEnableEvent"
-        | "org.bukkit.event.server.PluginDisableEvent"
-        | "org.bukkit.event.server.PluginEvent"
-        | "org.bukkit.event.server.ServerListPingEvent"
-        | "org.bukkit.event.server.ServiceRegisterEvent"
-        | "org.bukkit.event.server.ServiceUnregisterEvent"
-        | "org.bukkit.event.server.MapInitializeEvent"
         | "org.bukkit.event.server.ServerEvent"
-        | "org.bukkit.event.world.WorldInitEvent"
-        | "org.bukkit.event.world.WorldLoadEvent"
-        | "org.bukkit.event.world.WorldUnloadEvent"
-        | "org.bukkit.event.world.WorldSaveEvent"
-        | "org.bukkit.event.world.ChunkLoadEvent"
-        | "org.bukkit.event.world.ChunkUnloadEvent"
         | "org.bukkit.event.world.WorldEvent"
-        | "org.bukkit.event.weather.WeatherChangeEvent"
-        | "org.bukkit.event.weather.ThunderChangeEvent"
-        | "org.bukkit.event.weather.WeatherEvent" => {
+        | "org.bukkit.event.weather.WeatherEvent"
+        | "org.bukkit.event.vehicle.VehicleEvent"
+        | "org.bukkit.event.hanging.HangingEvent"
+        | "org.bukkit.event.raid.RaidEvent" => {
             tracing::info!(
-                "Registered Bukkit event listener '{}' from plugin '{}'",
+                "Registered Bukkit generic event listener '{}' from plugin '{}'",
                 request.event_type,
                 request.plugin_name
             );
         }
         _ => {
             tracing::warn!(
-                "Unsupported Bukkit event type '{}' from plugin '{}'",
+                "Unknown or unhandled Bukkit event type '{}' from plugin '{}'",
                 request.event_type,
                 request.plugin_name
             );
@@ -437,8 +3764,4 @@ pub fn ffi_native_bridge_register_event_impl(request: RegisterEventRequest) -> O
     }
 
     Some(())
-}
-
-pub fn ffi_native_bridge_call_event_impl(_request: CallEventRequest) -> Option<CallEventResponse> {
-    Some(CallEventResponse { handled: false })
 }
