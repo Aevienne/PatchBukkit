@@ -20,6 +20,14 @@ public class PatchBukkitOfflinePlayer implements OfflinePlayer {
         this.name = name;
     }
 
+    public PatchBukkitOfflinePlayer(UUID uuid) {
+        this(uuid, null);
+    }
+
+    public PatchBukkitOfflinePlayer(String name) {
+        this(null, name);
+    }
+
     @Override
     public boolean isOnline() {
         return getPlayer() != null;

@@ -1,5 +1,8 @@
 package org.patchbukkit.world;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -7,17 +10,16 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.Entity;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.material.MaterialData;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
-import org.bukkit.entity.Entity;
-import org.bukkit.inventory.ItemStack;
-import java.util.Collection;
-import java.util.List;
 
+@SuppressWarnings("deprecation")
 public class PatchBukkitBlockState implements BlockState {
     private final Block block;
     private BlockData data;
@@ -168,13 +170,11 @@ public class PatchBukkitBlockState implements BlockState {
 
     @Override
     public byte getLightLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLightLevel'");
+        return this.block.getLightLevel();
     }
 
     @Override
     public @NotNull @Unmodifiable Collection<ItemStack> getDrops(@Nullable ItemStack tool, @Nullable Entity entity) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getDrops'");
+        return this.block.getDrops(tool, entity);
     }
 }

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use pumpkin::entity::EntityBase;
 
 use crate::{
@@ -5,8 +7,16 @@ use crate::{
     proto::patchbukkit::{
         common::Uuid,
         entity::{
-            DamageEntityRequest, EntityHealthResponse, SetEntityHealthRequest,
-            SetEntityVelocityRequest, TeleportEntityRequest,
+            DamageEntityRequest, EntityHealthResponse, GetCooldownRequest, GetCooldownResponse,
+            GetExperienceResponse, GetFoodLevelResponse, GetPlayerPoseStateResponse,
+            KickPlayerRequest, PlayerConnectionInfoResponse, SendActionBarRequest,
+            SendBlockChangeRequest, SendGameEventRequest, SendResourcePackRequest,
+            SendTitleRequest, SetCompassTargetRequest, SetCooldownRequest, SetDisplayNameRequest,
+            SetEntityHealthRequest, SetEntityVelocityRequest, SetExhaustionRequest,
+            SetExperienceRequest, SetFoodLevelRequest, SetOpRequest,
+            SetPlayerListHeaderFooterRequest, SetPlayerListNameRequest, SetPlayerTimeRequest,
+            SetPlayerWeatherRequest, SetRespawnPointRequest, SetSaturationRequest,
+            SetSneakingRequest, SetSprintingRequest, StopSoundRequest, TeleportEntityRequest,
         },
     },
 };
@@ -170,4 +180,601 @@ pub fn ffi_native_bridge_is_op_impl(
     });
 
     Some(crate::proto::patchbukkit::entity::IsOpResponse { is_op })
+}
+
+pub fn ffi_native_bridge_set_op_impl(request: SetOpRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let is_op = request.is_op;
+    with_player(request.uuid.as_ref(), |player| {
+        let op_lvl = ctx.plugin_context.server.basic_config.op_permission_level;
+        let lvl = if is_op {
+            op_lvl
+        } else {
+            pumpkin_util::PermissionLvl::Zero
+        };
+        player.permission_lvl.store(lvl);
+    });
+    Some(())
+}
+
+pub fn ffi_native_bridge_get_food_level_impl(request: Uuid) -> Option<GetFoodLevelResponse> {
+    with_player(Some(&request), |player| {
+        let food_level = i32::from(player.hunger_manager.level.load());
+        let saturation = player.hunger_manager.saturation.load();
+        let exhaustion = player.hunger_manager.get_exhaustion();
+        GetFoodLevelResponse {
+            food_level,
+            saturation,
+            exhaustion,
+        }
+    })
+}
+
+pub fn ffi_native_bridge_set_food_level_impl(request: SetFoodLevelRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let food_level = request.food_level as u8;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            player.hunger_manager.set_level(food_level);
+            player.send_health().await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_saturation_impl(request: SetSaturationRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let saturation = request.saturation;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            player.hunger_manager.set_saturation(saturation);
+            player.send_health().await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_exhaustion_impl(request: SetExhaustionRequest) -> Option<()> {
+    with_player(request.uuid.as_ref(), |player| {
+        player.hunger_manager.set_exhaustion(request.exhaustion);
+    })
+}
+
+pub fn ffi_native_bridge_get_experience_impl(request: Uuid) -> Option<GetExperienceResponse> {
+    with_player(Some(&request), |player| {
+        let level = player.get_experience_level();
+        let progress = player.get_experience_progress();
+        let total_experience = player.get_total_experience();
+        GetExperienceResponse {
+            level,
+            progress,
+            total_experience,
+        }
+    })
+}
+
+pub fn ffi_native_bridge_set_experience_impl(request: SetExperienceRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let level = request.level;
+        let progress = request.progress;
+        let total_experience = request.total_experience;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            player
+                .set_experience(level, progress, total_experience)
+                .await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_kick_player_impl(request: KickPlayerRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let msg = request.message;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
+            player
+                .kick(pumpkin::net::DisconnectReason::Kicked, text)
+                .await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_send_title_impl(request: SendTitleRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let title = request.title;
+        let subtitle = request.subtitle;
+        let fade_in = request.fade_in;
+        let stay = request.stay;
+        let fade_out = request.fade_out;
+        ctx.runtime.spawn(async move {
+            if fade_in >= 0 && stay >= 0 && fade_out >= 0 {
+                player.send_title_animation(fade_in, stay, fade_out).await;
+            }
+            if !title.is_empty() {
+                let text = pumpkin_util::text::TextComponent::from_legacy_string(&title);
+                player
+                    .show_title(&text, &pumpkin::entity::player::TitleMode::Title)
+                    .await;
+            }
+            if !subtitle.is_empty() {
+                let text = pumpkin_util::text::TextComponent::from_legacy_string(&subtitle);
+                player
+                    .show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle)
+                    .await;
+            }
+        });
+    })
+}
+
+pub fn ffi_native_bridge_send_action_bar_impl(request: SendActionBarRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let msg = request.message;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
+            player.send_system_message_raw(&text, true).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_reset_title_impl(request: Uuid) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(Some(&request), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let text = pumpkin_util::text::TextComponent::text("");
+            player
+                .show_title(&text, &pumpkin::entity::player::TitleMode::Title)
+                .await;
+            player
+                .show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle)
+                .await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_display_name_impl(request: SetDisplayNameRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let name = request.display_name;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let comp = if name.is_empty() {
+                None
+            } else {
+                Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
+            };
+            player.set_display_name(comp).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_player_list_name_impl(
+    request: SetPlayerListNameRequest,
+) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let name = request.list_name;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let comp = if name.is_empty() {
+                None
+            } else {
+                Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
+            };
+            player.set_tab_list_name(comp).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_player_list_header_footer_impl(
+    request: SetPlayerListHeaderFooterRequest,
+) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let header = request.header;
+        let footer = request.footer;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let h = pumpkin_util::text::TextComponent::from_legacy_string(&header);
+            let f = pumpkin_util::text::TextComponent::from_legacy_string(&footer);
+            player.set_tab_list_header_footer(h, f).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_get_player_pose_state_impl(
+    request: Uuid,
+) -> Option<GetPlayerPoseStateResponse> {
+    with_player(Some(&request), |player| {
+        let is_sneaking = player
+            .living_entity
+            .entity
+            .sneaking
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let is_sprinting = player
+            .living_entity
+            .entity
+            .sprinting
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let is_gliding = player
+            .living_entity
+            .entity
+            .fall_flying
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let is_swimming = player
+            .living_entity
+            .entity
+            .swimming
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let is_sleeping = player.sleeping_since.load().is_some();
+        GetPlayerPoseStateResponse {
+            is_sneaking,
+            is_sprinting,
+            is_gliding,
+            is_swimming,
+            is_sleeping,
+        }
+    })
+}
+
+pub fn ffi_native_bridge_set_sneaking_impl(request: SetSneakingRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let sneaking = request.sneaking;
+        ctx.runtime.spawn(async move {
+            player.living_entity.entity.set_sneaking(sneaking).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_sprinting_impl(request: SetSprintingRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let sprinting = request.sprinting;
+        ctx.runtime.spawn(async move {
+            player.living_entity.entity.set_sprinting(sprinting).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_player_time_impl(request: SetPlayerTimeRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let time = request.time;
+        let relative = request.relative;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let packet = pumpkin_protocol::java::client::play::CUpdateTime::new(0, time, relative);
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_reset_player_time_impl(request: Uuid) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(Some(&request), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let world_time = player.world().level_time.lock().await.time_of_day;
+            let packet = pumpkin_protocol::java::client::play::CUpdateTime::new(
+                world_time, world_time, true,
+            );
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_player_weather_impl(request: SetPlayerWeatherRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let weather = request.weather;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let event = if weather == 1 {
+                pumpkin_protocol::java::client::play::GameEvent::BeginRaining
+            } else {
+                pumpkin_protocol::java::client::play::GameEvent::EndRaining
+            };
+            let packet = pumpkin_protocol::java::client::play::CGameEvent::new(event, 0.0);
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_reset_player_weather_impl(request: Uuid) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(Some(&request), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let is_raining = player.world().is_raining().await;
+            let event = if is_raining {
+                pumpkin_protocol::java::client::play::GameEvent::BeginRaining
+            } else {
+                pumpkin_protocol::java::client::play::GameEvent::EndRaining
+            };
+            let packet = pumpkin_protocol::java::client::play::CGameEvent::new(event, 0.0);
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_compass_target_impl(request: SetCompassTargetRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let pos = request.position?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let block_pos = pumpkin_util::math::position::BlockPos::new(
+                pos.x as i32,
+                pos.y as i32,
+                pos.z as i32,
+            );
+            let dimension_name = player.world().dimension.minecraft_name.to_string();
+            let packet = pumpkin_protocol::java::client::play::CPlayerSpawnPosition::new(
+                block_pos,
+                0.0,
+                0.0,
+                dimension_name,
+            );
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_get_compass_target_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::common::Vec3> {
+    with_player(Some(&request), |player| {
+        let info = player.world().level_info.load();
+        crate::proto::patchbukkit::common::Vec3 {
+            x: info.spawn_x as f64,
+            y: info.spawn_y as f64,
+            z: info.spawn_z as f64,
+        }
+    })
+}
+
+pub fn ffi_native_bridge_set_respawn_point_impl(request: SetRespawnPointRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    let pos = request.position?;
+    with_player(request.uuid.as_ref(), |player| {
+        let block_pos =
+            pumpkin_util::math::position::BlockPos::new(pos.x as i32, pos.y as i32, pos.z as i32);
+        let yaw = request.yaw;
+        let force = request.force;
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            let dim = player.world().dimension.clone();
+            player
+                .set_respawn_point(dim, block_pos, yaw, 0.0, force)
+                .await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_get_respawn_point_impl(
+    request: Uuid,
+) -> Option<crate::proto::patchbukkit::common::Location> {
+    with_player(Some(&request), |player| {
+        let (pos, yaw, world_uuid) = if let Ok(guard) = player.respawn_point.try_lock() {
+            match *guard {
+                Some(ref pt) => (
+                    crate::proto::patchbukkit::common::Vec3 {
+                        x: pt.position.0.x as f64,
+                        y: pt.position.0.y as f64,
+                        z: pt.position.0.z as f64,
+                    },
+                    pt.yaw,
+                    player.world().uuid.to_string(),
+                ),
+                None => {
+                    let info = player.world().level_info.load();
+                    (
+                        crate::proto::patchbukkit::common::Vec3 {
+                            x: info.spawn_x as f64,
+                            y: info.spawn_y as f64,
+                            z: info.spawn_z as f64,
+                        },
+                        info.spawn_yaw,
+                        player.world().uuid.to_string(),
+                    )
+                }
+            }
+        } else {
+            let info = player.world().level_info.load();
+            (
+                crate::proto::patchbukkit::common::Vec3 {
+                    x: info.spawn_x as f64,
+                    y: info.spawn_y as f64,
+                    z: info.spawn_z as f64,
+                },
+                info.spawn_yaw,
+                player.world().uuid.to_string(),
+            )
+        };
+        crate::proto::patchbukkit::common::Location {
+            position: Some(pos),
+            yaw,
+            pitch: 0.0,
+            world: Some(crate::proto::patchbukkit::common::World {
+                uuid: Some(crate::proto::patchbukkit::common::Uuid { value: world_uuid }),
+            }),
+        }
+    })
+}
+
+pub fn ffi_native_bridge_stop_sound_impl(request: StopSoundRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let sound = if request.sound.is_empty() {
+            None
+        } else {
+            pumpkin_util::resource_location::ResourceLocation::from_str(&request.sound).ok()
+        };
+        let category = if request.category.is_empty() {
+            None
+        } else {
+            pumpkin_data::sound::SoundCategory::from_name(&request.category.to_lowercase())
+        };
+        ctx.runtime.spawn(async move {
+            player.stop_sound(sound, category).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_send_block_change_impl(request: SendBlockChangeRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let pos = pumpkin_util::math::position::BlockPos::new(request.x, request.y, request.z);
+        let state_str = request.block_state;
+        let clean_key = state_str
+            .split('[')
+            .next()
+            .unwrap_or(&state_str)
+            .trim_start_matches("minecraft:");
+        let state_id = if let Some(b) = pumpkin_data::Block::from_registry_key(clean_key) {
+            b.default_state.id
+        } else {
+            pumpkin_data::BlockStateId::new_or_air(0)
+        };
+        ctx.runtime.spawn(async move {
+            let packet = pumpkin_protocol::java::client::play::CBlockUpdate::new(
+                pos,
+                pumpkin_protocol::codec::var_int::VarInt(state_id.as_u16() as i32),
+            );
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_send_resource_pack_impl(request: SendResourcePackRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let url = request.url;
+        let prompt = request.prompt;
+        let required = request.required;
+        ctx.runtime.spawn(async move {
+            let prompt_comp = if prompt.is_empty() {
+                None
+            } else {
+                Some(pumpkin_util::text::TextComponent::from_legacy_string(
+                    &prompt,
+                ))
+            };
+            let id = uuid::Uuid::new_v4();
+            let packet = pumpkin_protocol::java::client::play::CAddResourcePack::new(
+                &id,
+                &url,
+                "",
+                required,
+                prompt_comp,
+            );
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_get_player_connection_info_impl(
+    request: Uuid,
+) -> Option<PlayerConnectionInfoResponse> {
+    with_player(Some(&request), |player| {
+        let ping = player.ping.load(std::sync::atomic::Ordering::Relaxed) as i32;
+        let addr = player.client.address();
+        PlayerConnectionInfoResponse {
+            ping,
+            address: addr.ip().to_string(),
+            port: addr.port() as i32,
+            client_brand: "vanilla".to_string(),
+        }
+    })
+}
+
+pub fn ffi_native_bridge_send_game_event_impl(request: SendGameEventRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let event_type = request.event_type as u8;
+        let value = request.value;
+        ctx.runtime.spawn(async move {
+            let packet = pumpkin_protocol::java::client::play::CGameEvent {
+                event: event_type,
+                value,
+            };
+            player.send_client_packet(&packet).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_set_cooldown_impl(request: SetCooldownRequest) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(request.uuid.as_ref(), |player| {
+        let player = player.clone();
+        let group = request.item_group;
+        let duration = request.duration_ticks;
+        ctx.runtime.spawn(async move {
+            player.start_cooldown(group, duration).await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_get_cooldown_impl(
+    request: GetCooldownRequest,
+) -> Option<GetCooldownResponse> {
+    with_player(request.uuid.as_ref(), |player| {
+        let (cooldown, is_on_cooldown) = if let Ok(guard) = player.item_cooldowns.try_lock() {
+            if let Some(cooldown) = guard.get(&request.item_group) {
+                let current_tick = player
+                    .tick_counter
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let elapsed = current_tick - cooldown.start_tick;
+                if elapsed < cooldown.duration {
+                    (1.0 - (elapsed as f32 / cooldown.duration as f32), true)
+                } else {
+                    (0.0, false)
+                }
+            } else {
+                (0.0, false)
+            }
+        } else {
+            (0.0, false)
+        };
+        GetCooldownResponse {
+            cooldown,
+            is_on_cooldown,
+        }
+    })
+}
+
+pub fn ffi_native_bridge_open_ender_chest_impl(request: Uuid) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(Some(&request), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            player.open_ender_chest().await;
+        });
+    })
+}
+
+pub fn ffi_native_bridge_update_inventory_impl(request: Uuid) -> Option<()> {
+    let ctx = CALLBACK_CONTEXT.get()?;
+    with_player(Some(&request), |player| {
+        let player = player.clone();
+        ctx.runtime.spawn(async move {
+            player
+                .on_screen_handler_opened(player.player_screen_handler.clone())
+                .await;
+        });
+    })
 }

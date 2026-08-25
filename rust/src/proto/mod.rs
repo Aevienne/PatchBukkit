@@ -50,6 +50,10 @@ pub mod patchbukkit {
     pub mod command {
         include!(concat!(env!("OUT_DIR"), "/patchbukkit.command.rs"));
     }
+
+    pub mod server {
+        include!(concat!(env!("OUT_DIR"), "/patchbukkit.server.rs"));
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/ffi_init.rs"));

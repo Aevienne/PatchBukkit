@@ -1,26 +1,33 @@
 package org.patchbukkit.entity;
 
-import java.lang.ref.WeakReference;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import org.bukkit.BanEntry;
-import org.bukkit.Chunk;
+import org.bukkit.BanList;
 import org.bukkit.DyeColor;
 import org.bukkit.Effect;
-import org.bukkit.EntityEffect;
-import org.bukkit.GameMode;
-import org.bukkit.Input;
 import org.bukkit.Instrument;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Note;
 import org.bukkit.Particle;
+import org.bukkit.GameMode;
 import org.bukkit.ServerLinks;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
@@ -31,6 +38,7 @@ import org.bukkit.advancement.Advancement;
 import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
+import org.bukkit.block.Sign;
 import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.sign.Side;
@@ -47,1788 +55,2201 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.map.MapView;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
+import org.bukkit.plugin.messaging.StandardMessenger;
+import org.bukkit.profile.PlayerProfile;
 import org.bukkit.scoreboard.Scoreboard;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Range;
-import org.jetbrains.annotations.Unmodifiable;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Nullable;
+import org.patchbukkit.PatchBukkitServer;
 import org.patchbukkit.bridge.BridgeUtils;
-import org.patchbukkit.registry.PatchBukkitSound;
 
-import com.destroystokyo.paper.ClientOption;
 import com.destroystokyo.paper.Title;
-import com.destroystokyo.paper.profile.PlayerProfile;
-import com.google.common.base.Preconditions;
 
-import io.papermc.paper.connection.PlayerGameConnection;
-import io.papermc.paper.entity.LookAnchor;
-import io.papermc.paper.entity.PlayerGiveResult;
 import io.papermc.paper.math.Position;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.util.TriState;
 import net.md_5.bungee.api.chat.BaseComponent;
 import patchbukkit.bridge.NativeBridgeFfi;
-import patchbukkit.message.SendMessageRequest;
-import patchbukkit.abilities.SetAbilitiesRequest;
-import patchbukkit.sound.PlayerEntityPlaySoundRequest;
-import patchbukkit.sound.PlayerPlaySoundRequest;
+import patchbukkit.entity.KickPlayerRequest;
+import patchbukkit.entity.SendActionBarRequest;
+import patchbukkit.entity.SendBlockChangeRequest;
+import patchbukkit.entity.SendGameEventRequest;
+import patchbukkit.entity.SendResourcePackRequest;
+import patchbukkit.entity.SendTitleRequest;
+import patchbukkit.entity.SetCompassTargetRequest;
+import patchbukkit.entity.SetDisplayNameRequest;
+import patchbukkit.entity.SetExperienceRequest;
+import patchbukkit.entity.SetPlayerListHeaderFooterRequest;
+import patchbukkit.entity.SetPlayerListNameRequest;
+import patchbukkit.entity.SetPlayerTimeRequest;
+import patchbukkit.entity.SetPlayerWeatherRequest;
+import patchbukkit.entity.SetRespawnPointRequest;
+import patchbukkit.entity.StopSoundRequest;
 
-@SuppressWarnings({ "deprecation", "removal", "unchecked" })
-public class PatchBukkitPlayer
-    extends PatchBukkitHumanEntity
-    implements Player {
+@SuppressWarnings({ "deprecation", "removal" })
+public class PatchBukkitPlayer extends PatchBukkitHumanEntity implements Player {
 
-    private final Map<UUID, Set<WeakReference<Plugin>>> invertedVisibilityEntities = new HashMap<>();
+    private String displayName;
+    private String playerListName;
+    private String playerListHeader = "";
+    private String playerListFooter = "";
+    private int playerListOrder = 0;
+    private long playerTime = 0;
+    private boolean playerTimeRelative = true;
+    private WeatherType playerWeather = null;
+    private Location compassTarget;
+    private double healthScale = 20.0;
+    private boolean healthScaled = false;
+    private boolean affectsSpawning = true;
+    private int viewDistance = -1;
+    private int simulationDistance = -1;
+    private int sendViewDistance = -1;
+    private Scoreboard scoreboard;
+    private final Set<BossBar> bossBars = new HashSet<>();
+    private final Set<String> listeningChannels = new HashSet<>();
+    private final Set<Player> hiddenPlayers = new HashSet<>();
+    private final Map<UUID, Set<Plugin>> hiddenPlayersPlugins = new HashMap<>();
+    private final Map<Statistic, Integer> statistics = new EnumMap<>(Statistic.class);
+    private final Map<Statistic, Map<Material, Integer>> materialStatistics = new EnumMap<>(Statistic.class);
+    private final Map<Statistic, Map<EntityType, Integer>> entityStatistics = new EnumMap<>(Statistic.class);
+    private final Player.Spigot spigot;
+    private long firstPlayed;
+    private long lastLogin;
+    private int wardenWarningLevel = 0;
+    private int wardenWarningCooldown = 0;
+    private int wardenTimeSinceLastWarning = 0;
+    private boolean hasSeenWinScreen = false;
+    private int expCooldown = 0;
+    private TriState flyingFallDamage = TriState.NOT_SET;
 
     public PatchBukkitPlayer(UUID uuid, String name) {
         super(uuid, name);
-    }
+        this.displayName = name;
+        this.playerListName = name;
+        this.firstPlayed = System.currentTimeMillis();
+        this.lastLogin = System.currentTimeMillis();
+        this.spigot = new Player.Spigot() {
+            @Override
+            public void sendMessage(@NotNull BaseComponent component) {
+                PatchBukkitPlayer.this.sendMessage(BaseComponent.toLegacyText(component));
+            }
 
-    @Override
-    public void openSign(@NotNull org.bukkit.block.Sign sign) {
-    }
+            @Override
+            public void sendMessage(@NotNull BaseComponent... components) {
+                PatchBukkitPlayer.this.sendMessage(BaseComponent.toLegacyText(components));
+            }
 
-    @Override
-    public <T> void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data, boolean force) {
-    }
+            @Override
+            public void sendMessage(@NotNull net.md_5.bungee.api.ChatMessageType position, @NotNull BaseComponent... components) {
+                if (position == net.md_5.bungee.api.ChatMessageType.ACTION_BAR) {
+                    PatchBukkitPlayer.this.sendActionBar(BaseComponent.toLegacyText(components));
+                } else {
+                    PatchBukkitPlayer.this.sendMessage(BaseComponent.toLegacyText(components));
+                }
+            }
 
-    @Override
-    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data) {
-    }
+            @Override
+            public void sendMessage(@Nullable UUID sender, @NotNull BaseComponent component) {
+                sendMessage(component);
+            }
 
-    public void unsetFixedPose() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'unsetFixedPose'");
-    }
+            @Override
+            public void sendMessage(@Nullable UUID sender, @NotNull BaseComponent... components) {
+                sendMessage(components);
+            }
 
-    public void resetFlyingTicks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetFlyingTicks'");
-    }
+            @Override
+            public @NotNull InetSocketAddress getRawAddress() {
+                return PatchBukkitPlayer.this.getAddress();
+            }
 
-    @Override
-    public void sendRawMessage(String message) {
-        this.sendRawMessage(null, message);
-    }
+            public @NotNull String getLocale() {
+                return PatchBukkitPlayer.this.getLocale();
+            }
 
-    @Override
-    public void sendRawMessage(UUID sender, String message) {
-        var request = SendMessageRequest.newBuilder().setMessage(message != null ? message : "").setUuid(BridgeUtils.convertUuid(this.getUniqueId())).build();
-        NativeBridgeFfi.sendMessage(request);
-    }
+            @Override
+            public @NotNull Set<Player> getHiddenPlayers() {
+                return Collections.unmodifiableSet(PatchBukkitPlayer.this.hiddenPlayers);
+            }
 
-    @Override
-    public void sendMessage(String message) {
-        this.sendRawMessage(message);
-    }
-
-    @Override
-    public void sendMessage(String... messages) {
-        for (String message : messages) {
-            this.sendMessage(message);
-        }
-    }
-
-    @Override
-    public void sendMessage(UUID sender, String message) {
-        this.sendRawMessage(sender, message);
-    }
-
-    @Override
-    public void sendMessage(UUID sender, String... messages) {
-        for (String message : messages) {
-            this.sendMessage(sender, message);
-        }
+            @Override
+            public void respawn() {
+                Location loc = PatchBukkitPlayer.this.getBedSpawnLocation();
+                if (loc != null) {
+                    PatchBukkitPlayer.this.teleport(loc);
+                }
+            }
+        };
     }
 
     @Override
     public Player.Spigot spigot() {
-        throw new UnsupportedOperationException("Unimplemented method 'spigot'");
+        return this.spigot;
     }
 
-    @Override
-    public boolean isConversing() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isConversing'");
-    }
-
-    @Override
-    public void acceptConversationInput(@NotNull String input) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'acceptConversationInput'");
-    }
-
-    @Override
-    public boolean beginConversation(@NotNull Conversation conversation) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'beginConversation'");
-    }
-
-    @Override
-    public void abandonConversation(@NotNull Conversation conversation) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'abandonConversation'");
-    }
-
-    @Override
-    public void abandonConversation(@NotNull Conversation conversation, @NotNull ConversationAbandonedEvent details) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'abandonConversation'");
-    }
+    // --- Identity, Online & OfflinePlayer ---
 
     @Override
     public boolean isOnline() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isOnline'");
+        return true;
     }
 
     @Override
     public boolean isConnected() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isConnected'");
+        return true;
     }
 
     @Override
-    public boolean isBanned() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isBanned'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Date expires,
-            @org.jspecify.annotations.Nullable String source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Instant expires,
-            @org.jspecify.annotations.Nullable String source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Duration duration,
-            @org.jspecify.annotations.Nullable String source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public boolean isWhitelisted() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isWhitelisted'");
-    }
-
-    @Override
-    public void setWhitelisted(boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWhitelisted'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable Player getPlayer() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayer'");
+    public Player getPlayer() {
+        return this;
     }
 
     @Override
     public long getFirstPlayed() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getFirstPlayed'");
+        return this.firstPlayed > 0 ? this.firstPlayed : System.currentTimeMillis();
     }
 
     @Override
     public long getLastPlayed() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastPlayed'");
+        return System.currentTimeMillis();
     }
 
     @Override
     public boolean hasPlayedBefore() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasPlayedBefore'");
+        return true;
     }
 
     @Override
     public long getLastLogin() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastLogin'");
+        return this.lastLogin > 0 ? this.lastLogin : System.currentTimeMillis();
     }
 
     @Override
     public long getLastSeen() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLastSeen'");
+        return System.currentTimeMillis();
     }
 
-    public @org.jspecify.annotations.Nullable Location getRespawnLocation(boolean loadLocationAndValidate) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getRespawnLocation'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic, int amount) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic, int amount) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public void setStatistic(Statistic statistic, int newValue) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setStatistic'");
-    }
-
-    @Override
-    public int getStatistic(Statistic statistic) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getStatistic'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic, Material material) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic, Material material) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public int getStatistic(Statistic statistic, Material material) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getStatistic'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic, Material material, int amount) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic, Material material, int amount) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public void setStatistic(Statistic statistic, Material material, int newValue) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setStatistic'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic, EntityType entityType) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic, EntityType entityType) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public int getStatistic(Statistic statistic, EntityType entityType) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getStatistic'");
-    }
-
-    @Override
-    public void incrementStatistic(Statistic statistic, EntityType entityType, int amount)
-            throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'incrementStatistic'");
-    }
-
-    @Override
-    public void decrementStatistic(Statistic statistic, EntityType entityType, int amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'decrementStatistic'");
-    }
-
-    @Override
-    public void setStatistic(Statistic statistic, EntityType entityType, int newValue) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setStatistic'");
-    }
-
-    @Override
-    public @NotNull Map<String, Object> serialize() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'serialize'");
-    }
-
-    @Override
-    public void sendPluginMessage(@NotNull Plugin source, @NotNull String channel, byte @NotNull [] message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendPluginMessage'");
-    }
-
-    @Override
-    public @NotNull Set<String> getListeningPluginChannels() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getListeningPluginChannels'");
-    }
-
-    @Override
-    public int getProtocolVersion() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getProtocolVersion'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable InetSocketAddress getVirtualHost() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getVirtualHost'");
-    }
-
-    @Override
-    public @UnmodifiableView Iterable<? extends BossBar> activeBossBars() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'activeBossBars'");
-    }
-
-    @Override
-    public Component displayName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'displayName'");
-    }
-
-    @Override
-    public void displayName(@org.jspecify.annotations.Nullable Component displayName) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'displayName'");
-    }
-
-    @Override
-    public String getDisplayName() {
-        return this.getName();
-    }
-
-    @Override
-    public void setDisplayName(@org.jspecify.annotations.Nullable String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setDisplayName'");
-    }
-
-    @Override
-    public void playerListName(@org.jspecify.annotations.Nullable Component name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playerListName'");
-    }
-
-    @Override
-    public Component playerListName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playerListName'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable Component playerListHeader() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playerListHeader'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable Component playerListFooter() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playerListFooter'");
-    }
-
-    @Override
-    public String getPlayerListName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerListName'");
-    }
-
-    @Override
-    public void setPlayerListName(@org.jspecify.annotations.Nullable String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListName'");
-    }
-
-    @Override
-    public int getPlayerListOrder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerListOrder'");
-    }
-
-    @Override
-    public void setPlayerListOrder(int order) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListOrder'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable String getPlayerListHeader() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerListHeader'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable String getPlayerListFooter() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerListFooter'");
-    }
-
-    @Override
-    public void setPlayerListHeader(@org.jspecify.annotations.Nullable String header) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListHeader'");
-    }
-
-    @Override
-    public void setPlayerListFooter(@org.jspecify.annotations.Nullable String footer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListFooter'");
-    }
-
-    @Override
-    public void setPlayerListHeaderFooter(@org.jspecify.annotations.Nullable String header,
-            @org.jspecify.annotations.Nullable String footer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListHeaderFooter'");
-    }
-
-    @Override
-    public void setCompassTarget(Location loc) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setCompassTarget'");
-    }
-
-    @Override
-    public Location getCompassTarget() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getCompassTarget'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable InetSocketAddress getAddress() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAddress'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable InetSocketAddress getHAProxyAddress() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getHAProxyAddress'");
-    }
-
-    @Override
-    public boolean isTransferred() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isTransferred'");
-    }
-
-    @Override
-    public CompletableFuture<byte @org.jspecify.annotations.Nullable []> retrieveCookie(NamespacedKey key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'retrieveCookie'");
-    }
-
-    @Override
-    public void storeCookie(NamespacedKey key, byte[] value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'storeCookie'");
-    }
-
-    @Override
-    public void transfer(String host, int port) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'transfer'");
-    }
-
-    @Override
-    public void kickPlayer(@org.jspecify.annotations.Nullable String message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'kickPlayer'");
-    }
-
-    @Override
-    public void kick(@org.jspecify.annotations.Nullable Component message, Cause cause) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'kick'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Date expires,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Instant expires,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public <E extends BanEntry<? super PlayerProfile>> @org.jspecify.annotations.Nullable E ban(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Duration duration,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'ban'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable BanEntry<InetAddress> banIp(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Date expires,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'banIp'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable BanEntry<InetAddress> banIp(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Instant expires,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'banIp'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable BanEntry<InetAddress> banIp(
-            @org.jspecify.annotations.Nullable String reason, @org.jspecify.annotations.Nullable Duration duration,
-            @org.jspecify.annotations.Nullable String source, boolean kickPlayer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'banIp'");
-    }
-
-    @Override
-    public void chat(String msg) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'chat'");
-    }
-
-    @Override
-    public boolean performCommand(String command) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'performCommand'");
-    }
-
-    private boolean sprinting = false;
-
-    @Override
-    public boolean isSprinting() {
-        return this.sprinting;
-    }
-
-    @Override
-    public void setSprinting(boolean sprinting) {
-        this.sprinting = sprinting;
-    }
-
-    @Override
-    public void saveData() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'saveData'");
-    }
-
-    @Override
-    public void loadData() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'loadData'");
-    }
-
-    @Override
-    public void setSleepingIgnored(boolean isSleeping) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSleepingIgnored'");
-    }
-
-    @Override
-    public boolean isSleepingIgnored() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isSleepingIgnored'");
-    }
-
-    @Override
-    public void setRespawnLocation(@org.jspecify.annotations.Nullable Location location, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setRespawnLocation'");
-    }
-
-    @Override
-    public Collection<EnderPearl> getEnderPearls() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getEnderPearls'");
-    }
-
-    @Override
-    public Input getCurrentInput() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getCurrentInput'");
-    }
-
-    @Override
-    public void playNote(Location loc, Instrument instrument, Note note) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playNote'");
-    }
-
-    @Override
-    public void playSound(Location location, Sound sound, float volume, float pitch) {
-        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
-    }
-
-    @Override
-    public void playSound(Location location, String sound, float volume, float pitch) {
-        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
-    }
-
-    @Override
-    public void playSound(Location location, Sound sound, SoundCategory category, float volume, float pitch) {
-        var patchBukkitSound = (PatchBukkitSound) sound;
-        this.playSound0(location, patchBukkitSound.getOriginalName(), category, volume, pitch, OptionalLong.empty());
-    }
-
-    @Override
-    public void playSound(Location location, String sound, SoundCategory category, float volume, float pitch) {
-        this.playSound0(location, sound, category, volume, pitch, OptionalLong.empty());
-    }
-
-    @Override
-    public void playSound(Location location, Sound sound, SoundCategory category, float volume, float pitch,
-            long seed) {
-        var patchBukkitSound = (PatchBukkitSound) sound;
-        this.playSound0(location, patchBukkitSound.getOriginalName(), category, volume, pitch, OptionalLong.of(seed));
-    }
-
-    @Override
-    public void playSound(Location location, String sound, SoundCategory category, float volume, float pitch,
-            long seed) {
-        this.playSound0(location, sound, category, volume, pitch, OptionalLong.of(seed));
-    }
-    
-    private void playSound0(Location location, String sound, SoundCategory category, float volume, float pitch, OptionalLong seed) {
-        var request = PlayerPlaySoundRequest.newBuilder()
-            .setPlayerUuid(BridgeUtils.convertUuid(this.uuid))
-            .setLocation(
-                patchbukkit.common.Location.newBuilder()
-                    .setPosition(
-                        patchbukkit.common.Vec3.newBuilder()
-                            .setX(location.x())
-                            .setY(location.y())
-                            .setZ(location.z())
-                    ).setWorld(
-                        patchbukkit.common.World.newBuilder().setUuid(BridgeUtils.convertUuid(location.getWorld().getUID()))
-                    ).setPitch(location.getPitch())
-                    .setYaw(location.getYaw())
-            ).setSound(
-                patchbukkit.sound.Sound.newBuilder()
-                    .setCategory(category.name())
-                    .setName(sound)
-            ).setVolume(volume)
-            .setPitch(pitch);
-
-        if (seed.isPresent()) request.setSeed(seed.getAsLong());
-        NativeBridgeFfi.playerPlaySound(request.build());
-    }
-
-    @Override
-    public void playSound(Entity entity, Sound sound, SoundCategory category, float volume, float pitch) {
-        var patchBukkitSound = (PatchBukkitSound) sound;
-        this.playSound0(entity, patchBukkitSound.getOriginalName(), category, volume, pitch, OptionalLong.empty());
-    }
-
-    @Override
-    public void playSound(Entity entity, String sound, SoundCategory category, float volume, float pitch) {
-        this.playSound0(entity, sound, category, volume, pitch, OptionalLong.empty());
-    }
-
-    @Override
-    public void playSound(Entity entity, Sound sound, SoundCategory category, float volume, float pitch, long seed) {
-        var patchBukkitSound = (PatchBukkitSound) sound;
-        this.playSound0(entity, patchBukkitSound.getOriginalName(), category, volume, pitch, OptionalLong.of(seed));
-    }
-
-    @Override
-    public void playSound(Entity entity, String sound, SoundCategory category, float volume, float pitch, long seed) {
-        this.playSound0(entity, sound, category, volume, pitch, OptionalLong.of(seed));
-    }
-
-    private void playSound0(Entity entity, String sound, SoundCategory category, float volume, float pitch, OptionalLong seed) {
-       var request = PlayerEntityPlaySoundRequest.newBuilder()
-           .setPlayerUuid(BridgeUtils.convertUuid(this.uuid))
-           .setEntityUuid(BridgeUtils.convertUuid(entity.getUniqueId()))
-            .setSound(
-                patchbukkit.sound.Sound.newBuilder()
-                    .setCategory(category.name())
-                    .setName(sound)
-            ).setVolume(volume)
-            .setPitch(pitch);
-
-        if (seed.isPresent()) request.setSeed(seed.getAsLong());
-        NativeBridgeFfi.playerEntityPlaySound(request.build());
-    }
-
-    @Override
-    public void stopSound(String sound, @org.jspecify.annotations.Nullable SoundCategory category) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'stopSound'");
-    }
-
-    @Override
-    public void stopSound(SoundCategory category) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'stopSound'");
-    }
-
-    @Override
-    public void stopAllSounds() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'stopAllSounds'");
-    }
-
-    @Override
-    public void playEffect(Location loc, Effect effect, int data) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playEffect'");
-    }
-
-    @Override
-    public <T> void playEffect(Location loc, Effect effect, @org.jspecify.annotations.Nullable T data) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'playEffect'");
-    }
-
-    @Override
-    public boolean breakBlock(Block block) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'breakBlock'");
-    }
-
-    @Override
-    public void sendBlockChange(Location loc, Material material, byte data) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockChange'");
-    }
-
-    @Override
-    public void sendBlockChange(Location loc, BlockData block) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockChange'");
-    }
-
-    @Override
-    public void sendBlockChanges(Collection<BlockState> blocks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockChanges'");
-    }
-
-    @Override
-    public void sendMultiBlockChange(Map<? extends Position, BlockData> blockChanges) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendMultiBlockChange'");
-    }
-
-    @Override
-    public void sendBlockDamage(Location loc, float progress, Entity source) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockDamage'");
-    }
-
-    @Override
-    public void sendBlockDamage(Location loc, float progress, int sourceId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockDamage'");
-    }
-
-    @Override
-    public void sendEquipmentChange(LivingEntity entity, EquipmentSlot slot,
-            @org.jspecify.annotations.Nullable ItemStack item) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendEquipmentChange'");
-    }
-
-    @Override
-    public void sendEquipmentChange(LivingEntity entity,
-            Map<EquipmentSlot, @org.jspecify.annotations.Nullable ItemStack> items) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendEquipmentChange'");
-    }
-
-    @Override
-    public void sendSignChange(Location loc, @org.jspecify.annotations.Nullable List<? extends Component> lines,
-            DyeColor dyeColor, boolean hasGlowingText) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendSignChange'");
-    }
-
-    @Override
-    public void sendSignChange(Location loc,
-            @org.jspecify.annotations.Nullable String @org.jspecify.annotations.Nullable [] lines)
-            throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendSignChange'");
-    }
-
-    @Override
-    public void sendSignChange(Location loc,
-            @org.jspecify.annotations.Nullable String @org.jspecify.annotations.Nullable [] lines, DyeColor dyeColor)
-            throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendSignChange'");
-    }
-
-    @Override
-    public void sendSignChange(Location loc,
-            @org.jspecify.annotations.Nullable String @org.jspecify.annotations.Nullable [] lines, DyeColor dyeColor,
-            boolean hasGlowingText) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendSignChange'");
-    }
-
-    @Override
-    public void sendBlockUpdate(Location loc, TileState tileState) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendBlockUpdate'");
-    }
-
-    @Override
-    public void sendPotionEffectChange(LivingEntity entity, PotionEffect effect) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendPotionEffectChange'");
-    }
-
-    @Override
-    public void sendPotionEffectChangeRemove(LivingEntity entity, PotionEffectType type) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendPotionEffectChangeRemove'");
-    }
-
-    @Override
-    public void sendMap(MapView map) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendMap'");
-    }
-
-    @Override
-    public void showWinScreen() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showWinScreen'");
-    }
-
-    @Override
-    public boolean hasSeenWinScreen() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasSeenWinScreen'");
-    }
-
-    @Override
-    public void setHasSeenWinScreen(boolean hasSeenWinScreen) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setHasSeenWinScreen'");
-    }
-
-    @Override
-    public void sendActionBar(String message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendActionBar'");
-    }
-
-    @Override
-    public void sendActionBar(char alternateChar, String message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendActionBar'");
-    }
-
-    @Override
-    public void sendActionBar(BaseComponent... message) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendActionBar'");
-    }
-
-    @Override
-    public void setPlayerListHeaderFooter(BaseComponent @org.jspecify.annotations.Nullable [] header,
-            BaseComponent @org.jspecify.annotations.Nullable [] footer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListHeaderFooter'");
-    }
-
-    @Override
-    public void setPlayerListHeaderFooter(@org.jspecify.annotations.Nullable BaseComponent header,
-            @org.jspecify.annotations.Nullable BaseComponent footer) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerListHeaderFooter'");
-    }
-
-    @Override
-    public void setTitleTimes(int fadeInTicks, int stayTicks, int fadeOutTicks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setTitleTimes'");
-    }
-
-    @Override
-    public void setSubtitle(BaseComponent[] subtitle) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSubtitle'");
-    }
-
-    @Override
-    public void setSubtitle(BaseComponent subtitle) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSubtitle'");
-    }
-
-    @Override
-    public void showTitle(@org.jspecify.annotations.Nullable BaseComponent[] title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showTitle'");
-    }
-
-    @Override
-    public void showTitle(@org.jspecify.annotations.Nullable BaseComponent title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showTitle'");
-    }
-
-    @Override
-    public void showTitle(@org.jspecify.annotations.Nullable BaseComponent[] title,
-            @org.jspecify.annotations.Nullable BaseComponent[] subtitle, int fadeInTicks, int stayTicks,
-            int fadeOutTicks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showTitle'");
-    }
-
-    @Override
-    public void showTitle(@org.jspecify.annotations.Nullable BaseComponent title,
-            @org.jspecify.annotations.Nullable BaseComponent subtitle, int fadeInTicks, int stayTicks,
-            int fadeOutTicks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showTitle'");
-    }
-
-    @Override
-    public void sendTitle(Title title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendTitle'");
-    }
-
-    @Override
-    public void updateTitle(Title title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updateTitle'");
-    }
-
-    @Override
-    public void hideTitle() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hideTitle'");
-    }
-
-    @Override
-    public void sendHurtAnimation(float yaw) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendHurtAnimation'");
-    }
-
-    @Override
-    public void sendLinks(ServerLinks links) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendLinks'");
-    }
-
-    @Override
-    public void addCustomChatCompletions(Collection<String> completions) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addCustomChatCompletions'");
-    }
-
-    @Override
-    public void removeCustomChatCompletions(Collection<String> completions) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeCustomChatCompletions'");
-    }
-
-    @Override
-    public void setCustomChatCompletions(Collection<String> completions) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setCustomChatCompletions'");
-    }
-
-    @Override
-    public void updateInventory() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updateInventory'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable GameMode getPreviousGameMode() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPreviousGameMode'");
-    }
-
-    @Override
-    public void setPlayerTime(long time, boolean relative) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerTime'");
-    }
-
-    @Override
-    public long getPlayerTime() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerTime'");
-    }
-
     @Override
-    public long getPlayerTimeOffset() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerTimeOffset'");
+    public boolean isBanned() {
+        return PatchBukkitServer.getInstance().getBanList(BanList.Type.NAME).isBanned(getName());
     }
 
     @Override
-    public boolean isPlayerTimeRelative() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isPlayerTimeRelative'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Date expires, @Nullable String source) {
+        return ban(reason, expires, source, true);
     }
 
     @Override
-    public void resetPlayerTime() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetPlayerTime'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Instant expires, @Nullable String source) {
+        return ban(reason, expires, source, true);
     }
 
     @Override
-    public void setPlayerWeather(WeatherType type) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerWeather'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Duration duration, @Nullable String source) {
+        return ban(reason, duration, source, true);
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable WeatherType getPlayerWeather() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerWeather'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Date expires, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned by operator");
+        }
+        return null;
     }
 
     @Override
-    public void resetPlayerWeather() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetPlayerWeather'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Instant expires, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned by operator");
+        }
+        return null;
     }
 
     @Override
-    public int getExpCooldown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getExpCooldown'");
+    @SuppressWarnings("unchecked")
+    public <E extends BanEntry<? super com.destroystokyo.paper.profile.PlayerProfile>> @Nullable E ban(@Nullable String reason, @Nullable Duration duration, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned by operator");
+        }
+        return null;
     }
 
     @Override
-    public void setExpCooldown(int ticks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setExpCooldown'");
+    public @Nullable BanEntry<InetAddress> banIp(@Nullable String reason, @Nullable Date expires, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned IP by operator");
+        }
+        return null;
     }
 
     @Override
-    public void giveExp(int amount, boolean applyMending) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'giveExp'");
+    public @Nullable BanEntry<InetAddress> banIp(@Nullable String reason, @Nullable Instant expires, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned IP by operator");
+        }
+        return null;
     }
 
     @Override
-    public int applyMending(int amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'applyMending'");
+    public @Nullable BanEntry<InetAddress> banIp(@Nullable String reason, @Nullable Duration duration, @Nullable String source, boolean kickPlayer) {
+        if (kickPlayer) {
+            kickPlayer(reason != null ? reason : "Banned IP by operator");
+        }
+        return null;
     }
 
-    @Override
-    public void giveExpLevels(int amount) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'giveExpLevels'");
-    }
-
-    @Override
-    public float getExp() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getExp'");
-    }
-
-    @Override
-    public void setExp(float exp) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setExp'");
-    }
-
-    @Override
-    public int getLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLevel'");
-    }
-
-    @Override
-    public void setLevel(int level) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setLevel'");
-    }
-
-    @Override
-    public int getTotalExperience() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getTotalExperience'");
-    }
-
-    @Override
-    public void setTotalExperience(int exp) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setTotalExperience'");
-    }
-
-    @Override
-    public @Range(from = 0, to = 2147483647) int calculateTotalExperiencePoints() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'calculateTotalExperiencePoints'");
-    }
-
-    @Override
-    public void setExperienceLevelAndProgress(@Range(from = 0, to = 2147483647) int totalExperience) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setExperienceLevelAndProgress'");
-    }
-
-    @Override
-    public int getExperiencePointsNeededForNextLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getExperiencePointsNeededForNextLevel'");
-    }
-
-    @Override
-    public void sendExperienceChange(float progress) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendExperienceChange'");
-    }
-
-    @Override
-    public void sendExperienceChange(float progress, int level) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendExperienceChange'");
-    }
-
-    @Override
-    public boolean getAllowFlight() {
-        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
-        return abilities != null && abilities.getAllowFlying();
-    }
-
-    @Override
-    public void setAllowFlight(boolean flight) {
-        var playerUuid = BridgeUtils.convertUuid(this.uuid);
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
-        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
-        builder.setAllowFlying(flight);
-        if (builder.getFlying()) builder.setFlying(false);
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
-    }
-
-    @Override
-    public void setFlyingFallDamage(TriState flyingFallDamage) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setFlyingFallDamage'");
-    }
-
-    @Override
-    public TriState hasFlyingFallDamage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasFlyingFallDamage'");
-    }
-
-    @Override
-    public void hidePlayer(Player player) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hidePlayer'");
-    }
+    private boolean whitelisted = false;
 
     @Override
-    public void showPlayer(Player player) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showPlayer'");
+    public boolean isWhitelisted() {
+        return this.whitelisted;
     }
 
     @Override
-    public boolean canSee(Player player) {
-        return this.canSee((org.bukkit.entity.Entity) player);
+    public void setWhitelisted(boolean value) {
+        this.whitelisted = value;
     }
 
     @Override
-    public boolean canSee(Entity entity) {
-        return this.equals(entity) || entity.isVisibleByDefault() ^ this.invertedVisibilityEntities.containsKey(entity.getUniqueId());
+    public Map<String, Object> serialize() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("uuid", getUniqueId().toString());
+        map.put("name", getName());
+        return map;
     }
-
-    @Override
-    public void hideEntity(Plugin plugin, Entity entity) {
-        Preconditions.checkNotNull(plugin, "Plugin cannot be null");
-        Preconditions.checkNotNull(entity, "Entity cannot be null");
-        if (this.equals(entity)) return;
 
-        Set<WeakReference<Plugin>> plugins = invertedVisibilityEntities
-            .computeIfAbsent(entity.getUniqueId(), k -> new HashSet<>());
-        plugins.add(new WeakReference<>(plugin));
-    }
+    // --- Messaging & Chat ---
 
     @Override
-    public void showEntity(Plugin plugin, Entity entity) {
-        Preconditions.checkNotNull(plugin, "Plugin cannot be null");
-        Preconditions.checkNotNull(entity, "Entity cannot be null");
-        if (this.equals(entity)) return;
-
-        Set<WeakReference<Plugin>> plugins = invertedVisibilityEntities.get(entity.getUniqueId());
-        if (plugins == null) return;
-
-        plugins.removeIf(ref -> {
-            Plugin p = ref.get();
-            return p == null || p.equals(plugin);
-        });
-
-        if (plugins.isEmpty()) {
-            invertedVisibilityEntities.remove(entity.getUniqueId());
+    public void sendMessage(@NotNull String message) {
+        if (message == null) return;
+        try {
+            var request = patchbukkit.message.SendMessageRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+                .setMessage(message)
+                .build();
+            NativeBridgeFfi.sendMessage(request);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void sendMessage(@NotNull String... messages) {
+        if (messages == null) return;
+        for (String msg : messages) {
+            sendMessage(msg);
         }
     }
 
     @Override
-    public boolean isListed(Player other) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isListed'");
+    public void sendMessage(@Nullable UUID sender, @NotNull String message) {
+        sendMessage(message);
     }
 
     @Override
-    public boolean unlistPlayer(Player other) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'unlistPlayer'");
+    public void sendMessage(@Nullable UUID sender, @NotNull String... messages) {
+        sendMessage(messages);
     }
 
     @Override
-    public boolean listPlayer(Player other) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'listPlayer'");
+    public void sendRawMessage(@NotNull String message) {
+        sendMessage(message);
+    }
+
+    @Override
+    public void sendRawMessage(@Nullable UUID sender, @NotNull String message) {
+        sendMessage(message);
+    }
+
+    @Override
+    public void sendActionBar(@NotNull String message) {
+        if (message == null) return;
+        try {
+            var req = SendActionBarRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setMessage(message)
+                .build();
+            NativeBridgeFfi.sendActionBar(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void sendActionBar(char alternateChar, @NotNull String message) {
+        sendActionBar(org.bukkit.ChatColor.translateAlternateColorCodes(alternateChar, message));
+    }
+
+    @Override
+    public void sendActionBar(@NotNull BaseComponent... message) {
+        sendActionBar(BaseComponent.toLegacyText(message));
+    }
+
+    @Override
+    public void sendActionBar(@NotNull Component message) {
+        sendActionBar(LegacyComponentSerializer.legacySection().serialize(message));
+    }
+
+    @Override
+    public void chat(@NotNull String msg) {
+        if (msg == null) return;
+        if (msg.startsWith("/")) {
+            performCommand(msg.substring(1));
+        } else {
+            sendMessage("<" + getDisplayName() + "> " + msg);
+        }
+    }
+
+    @Override
+    public boolean performCommand(@NotNull String command) {
+        if (command == null) return false;
+        return PatchBukkitServer.getInstance().dispatchCommand(this, command);
+    }
+
+    // --- Display & Tab List ---
+
+    @Override
+    public @NotNull String getDisplayName() {
+        return this.displayName != null ? this.displayName : getName();
+    }
+
+    @Override
+    public void setDisplayName(@Nullable String name) {
+        this.displayName = name != null ? name : getName();
+        try {
+            var req = SetDisplayNameRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setDisplayName(this.displayName)
+                .build();
+            NativeBridgeFfi.setDisplayName(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public @NotNull Component displayName() {
+        return LegacyComponentSerializer.legacySection().deserialize(getDisplayName());
+    }
+
+    @Override
+    public void displayName(@Nullable Component displayName) {
+        setDisplayName(displayName != null ? LegacyComponentSerializer.legacySection().serialize(displayName) : null);
+    }
+
+    @Override
+    public @NotNull String getPlayerListName() {
+        return this.playerListName != null ? this.playerListName : getName();
+    }
+
+    @Override
+    public void setPlayerListName(@Nullable String name) {
+        this.playerListName = name != null ? name : getName();
+        try {
+            var req = SetPlayerListNameRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setListName(this.playerListName)
+                .build();
+            NativeBridgeFfi.setPlayerListName(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public @NotNull Component playerListName() {
+        return LegacyComponentSerializer.legacySection().deserialize(getPlayerListName());
+    }
+
+    @Override
+    public void playerListName(@Nullable Component name) {
+        setPlayerListName(name != null ? LegacyComponentSerializer.legacySection().serialize(name) : null);
+    }
+
+    @Override
+    public @Nullable String getPlayerListHeader() {
+        return this.playerListHeader;
+    }
+
+    @Override
+    public @Nullable String getPlayerListFooter() {
+        return this.playerListFooter;
+    }
+
+    @Override
+    public void setPlayerListHeader(@Nullable String header) {
+        setPlayerListHeaderFooter(header, this.playerListFooter);
+    }
+
+    @Override
+    public void setPlayerListFooter(@Nullable String footer) {
+        setPlayerListHeaderFooter(this.playerListHeader, footer);
+    }
+
+    @Override
+    public void setPlayerListHeaderFooter(@Nullable String header, @Nullable String footer) {
+        this.playerListHeader = header != null ? header : "";
+        this.playerListFooter = footer != null ? footer : "";
+        try {
+            var req = SetPlayerListHeaderFooterRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setHeader(this.playerListHeader)
+                .setFooter(this.playerListFooter)
+                .build();
+            NativeBridgeFfi.setPlayerListHeaderFooter(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void setPlayerListHeaderFooter(@Nullable BaseComponent header, @Nullable BaseComponent footer) {
+        setPlayerListHeaderFooter(
+            header != null ? BaseComponent.toLegacyText(header) : "",
+            footer != null ? BaseComponent.toLegacyText(footer) : ""
+        );
+    }
+
+    public void setPlayerListHeaderFooter(@Nullable BaseComponent[] header, @Nullable BaseComponent[] footer) {
+        setPlayerListHeaderFooter(
+            header != null ? BaseComponent.toLegacyText(header) : "",
+            footer != null ? BaseComponent.toLegacyText(footer) : ""
+        );
+    }
+
+    @Override
+    public @Nullable Component playerListHeader() {
+        return LegacyComponentSerializer.legacySection().deserialize(this.playerListHeader);
+    }
+
+    @Override
+    public @Nullable Component playerListFooter() {
+        return LegacyComponentSerializer.legacySection().deserialize(this.playerListFooter);
+    }
+
+    @Override
+    public void sendPlayerListHeader(@NotNull Component header) {
+        setPlayerListHeader(LegacyComponentSerializer.legacySection().serialize(header));
+    }
+
+    @Override
+    public void sendPlayerListFooter(@NotNull Component footer) {
+        setPlayerListFooter(LegacyComponentSerializer.legacySection().serialize(footer));
+    }
+
+    @Override
+    public void sendPlayerListHeaderAndFooter(@NotNull Component header, @NotNull Component footer) {
+        setPlayerListHeaderFooter(LegacyComponentSerializer.legacySection().serialize(header), LegacyComponentSerializer.legacySection().serialize(footer));
+    }
+
+    @Override
+    public int getPlayerListOrder() {
+        return this.playerListOrder;
+    }
+
+    @Override
+    public void setPlayerListOrder(int order) {
+        this.playerListOrder = order;
+    }
+
+    // --- Kick ---
+
+    @Override
+    public void kickPlayer(@Nullable String message) {
+        String kickMsg = (message != null && !message.isEmpty()) ? message : "Kicked from server";
+        try {
+            var req = KickPlayerRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setMessage(kickMsg)
+                .build();
+            NativeBridgeFfi.kickPlayer(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void kick() {
+        kickPlayer(null);
+    }
+
+    @Override
+    public void kick(@Nullable Component message) {
+        kickPlayer(message != null ? LegacyComponentSerializer.legacySection().serialize(message) : null);
+    }
+
+    @Override
+    public void kick(@Nullable Component message, @NotNull Cause cause) {
+        kick(message);
+    }
+
+    // --- Titles ---
+
+    @Override
+    public void sendTitle(@Nullable String title, @Nullable String subtitle) {
+        sendTitle(title, subtitle, 10, 70, 20);
+    }
+
+    @Override
+    public void sendTitle(@Nullable String title, @Nullable String subtitle, int fadeIn, int stay, int fadeOut) {
+        try {
+            var req = SendTitleRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setTitle(title != null ? title : "")
+                .setSubtitle(subtitle != null ? subtitle : "")
+                .setFadeIn(fadeIn)
+                .setStay(stay)
+                .setFadeOut(fadeOut)
+                .build();
+            NativeBridgeFfi.sendTitle(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void sendTitle(@NotNull Title title) {
+        sendTitle(
+            title.getTitle() != null ? BaseComponent.toLegacyText(title.getTitle()) : "",
+            title.getSubtitle() != null ? BaseComponent.toLegacyText(title.getSubtitle()) : "",
+            title.getFadeIn(),
+            title.getStay(),
+            title.getFadeOut()
+        );
+    }
+
+    @Override
+    public void showTitle(@NotNull net.kyori.adventure.title.Title title) {
+        String mainTitle = LegacyComponentSerializer.legacySection().serialize(title.title());
+        String subTitle = LegacyComponentSerializer.legacySection().serialize(title.subtitle());
+        net.kyori.adventure.title.Title.Times times = title.times();
+        int fadeIn = (times != null && times.fadeIn() != null) ? (int) (times.fadeIn().toMillis() / 50) : 10;
+        int stay = (times != null && times.stay() != null) ? (int) (times.stay().toMillis() / 50) : 70;
+        int fadeOut = (times != null && times.fadeOut() != null) ? (int) (times.fadeOut().toMillis() / 50) : 20;
+        sendTitle(mainTitle, subTitle, fadeIn, stay, fadeOut);
+    }
+
+    public void showTitle(@NotNull Title title) {
+        sendTitle(title);
+    }
+
+    @Override
+    public void showTitle(@Nullable BaseComponent title) {
+        sendTitle(title != null ? BaseComponent.toLegacyText(title) : "", "");
+    }
+
+    public void showTitle(@NotNull BaseComponent... title) {
+        sendTitle(BaseComponent.toLegacyText(title), "");
+    }
+
+    public void showTitle(@Nullable BaseComponent[] title, @Nullable BaseComponent[] subtitle, int fadeIn, int stay, int fadeOut) {
+        sendTitle(
+            title != null ? BaseComponent.toLegacyText(title) : "",
+            subtitle != null ? BaseComponent.toLegacyText(subtitle) : "",
+            fadeIn, stay, fadeOut
+        );
+    }
+
+    @Override
+    public void showTitle(@Nullable BaseComponent title, @Nullable BaseComponent subtitle, int fadeIn, int stay, int fadeOut) {
+        sendTitle(
+            title != null ? BaseComponent.toLegacyText(title) : "",
+            subtitle != null ? BaseComponent.toLegacyText(subtitle) : "",
+            fadeIn, stay, fadeOut
+        );
+    }
+
+    @Override
+    public void setTitleTimes(int fadeIn, int stay, int fadeOut) {
+        sendTitle("", "", fadeIn, stay, fadeOut);
+    }
+
+    @Override
+    public void setSubtitle(@NotNull BaseComponent... subtitle) {
+        sendTitle("", BaseComponent.toLegacyText(subtitle), 10, 70, 20);
+    }
+
+    @Override
+    public void setSubtitle(@NotNull BaseComponent subtitle) {
+        sendTitle("", BaseComponent.toLegacyText(subtitle), 10, 70, 20);
+    }
+
+    @Override
+    public void resetTitle() {
+        try {
+            NativeBridgeFfi.resetTitle(BridgeUtils.convertUuid(getUniqueId()));
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void hideTitle() {
+        resetTitle();
+    }
+
+    @Override
+    public void updateTitle(@NotNull Title title) {
+        sendTitle(title);
+    }
+
+    // --- Compass & Respawn ---
+
+    @Override
+    public void setCompassTarget(@NotNull Location loc) {
+        if (loc == null) return;
+        this.compassTarget = loc.clone();
+        try {
+            var req = SetCompassTargetRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setPosition(patchbukkit.common.Vec3.newBuilder()
+                    .setX(loc.getX())
+                    .setY(loc.getY())
+                    .setZ(loc.getZ())
+                    .build())
+                .build();
+            NativeBridgeFfi.setCompassTarget(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public @NotNull Location getCompassTarget() {
+        if (this.compassTarget != null) return this.compassTarget.clone();
+        try {
+            var resp = NativeBridgeFfi.getCompassTarget(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return new Location(getWorld(), resp.getX(), resp.getY(), resp.getZ());
+            }
+        } catch (Throwable ignored) {}
+        return getWorld().getSpawnLocation();
+    }
+
+    @Override
+    public @Nullable Location getBedSpawnLocation() {
+        try {
+            var resp = NativeBridgeFfi.getRespawnPoint(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return BridgeUtils.convertLocation(resp);
+            }
+        } catch (Throwable ignored) {}
+        return getWorld().getSpawnLocation();
+    }
+
+    @Override
+    public @Nullable Location getRespawnLocation() {
+        return getBedSpawnLocation();
+    }
+
+    public @Nullable Location getRespawnLocation(boolean checkBed) {
+        return getBedSpawnLocation();
+    }
+
+    @Override
+    public void setRespawnLocation(@Nullable Location location) {
+        setRespawnLocation(location, false);
+    }
+
+    @Override
+    public void setRespawnLocation(@Nullable Location location, boolean force) {
+        if (location == null) return;
+        try {
+            var req = SetRespawnPointRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setPosition(patchbukkit.common.Vec3.newBuilder()
+                    .setX(location.getX())
+                    .setY(location.getY())
+                    .setZ(location.getZ())
+                    .build())
+                .setYaw(location.getYaw())
+                .setForce(force)
+                .build();
+            NativeBridgeFfi.setRespawnPoint(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void setBedSpawnLocation(@Nullable Location location) {
+        setRespawnLocation(location, false);
+    }
+
+    @Override
+    public void setBedSpawnLocation(@Nullable Location location, boolean force) {
+        setRespawnLocation(location, force);
+    }
+
+    // --- Player Time & Weather ---
+
+    @Override
+    public void setPlayerTime(long time, boolean relative) {
+        this.playerTime = time;
+        this.playerTimeRelative = relative;
+        try {
+            var req = SetPlayerTimeRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setTime(time)
+                .setRelative(relative)
+                .build();
+            NativeBridgeFfi.setPlayerTime(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public long getPlayerTime() {
+        if (this.playerTimeRelative) {
+            return getWorld().getTime() + this.playerTime;
+        }
+        return this.playerTime;
+    }
+
+    @Override
+    public long getPlayerTimeOffset() {
+        return this.playerTime;
+    }
+
+    @Override
+    public boolean isPlayerTimeRelative() {
+        return this.playerTimeRelative;
+    }
+
+    @Override
+    public void resetPlayerTime() {
+        this.playerTime = 0;
+        this.playerTimeRelative = true;
+        try {
+            NativeBridgeFfi.resetPlayerTime(BridgeUtils.convertUuid(getUniqueId()));
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void setPlayerWeather(@NotNull WeatherType type) {
+        this.playerWeather = type;
+        try {
+            var req = SetPlayerWeatherRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setWeather(type == WeatherType.DOWNFALL ? 1 : 0)
+                .build();
+            NativeBridgeFfi.setPlayerWeather(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public @Nullable WeatherType getPlayerWeather() {
+        return this.playerWeather;
+    }
+
+    @Override
+    public void resetPlayerWeather() {
+        this.playerWeather = null;
+        try {
+            NativeBridgeFfi.resetPlayerWeather(BridgeUtils.convertUuid(getUniqueId()));
+        } catch (Throwable ignored) {}
+    }
+
+    // --- Sounds ---
+
+    @Override
+    public void stopSound(@NotNull String sound) {
+        stopSound(sound, null);
+    }
+
+    @Override
+    public void stopSound(@NotNull Sound sound) {
+        stopSound(sound, null);
+    }
+
+    @Override
+    public void stopSound(@NotNull Sound sound, @Nullable SoundCategory category) {
+        stopSound(sound.getKey().asString(), category);
+    }
+
+    @Override
+    public void stopSound(@NotNull String sound, @Nullable SoundCategory category) {
+        try {
+            var req = StopSoundRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setSound(sound != null ? sound : "")
+                .setCategory(category != null ? category.name().toLowerCase() : "")
+                .build();
+            NativeBridgeFfi.stopSound(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void stopSound(@NotNull SoundCategory category) {
+        stopSound("", category);
+    }
+
+    @Override
+    public void stopAllSounds() {
+        stopSound("", null);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull Sound sound, float volume, float pitch) {
+        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull String sound, float volume, float pitch) {
+        playSound(location, sound, SoundCategory.MASTER, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull Sound sound, @NotNull SoundCategory category, float volume, float pitch) {
+        playSound(location, sound.getKey().asString(), category, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull String sound, @NotNull SoundCategory category, float volume, float pitch) {
+        playSound(location, sound, category, volume, pitch, 0L);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull Sound sound, @NotNull SoundCategory category, float volume, float pitch, long seed) {
+        playSound(location, sound.getKey().asString(), category, volume, pitch, seed);
+    }
+
+    @Override
+    public void playSound(@NotNull Location location, @NotNull String sound, @NotNull SoundCategory category, float volume, float pitch, long seed) {
+        try {
+            var req = patchbukkit.sound.PlayerPlaySoundRequest.newBuilder()
+                .setPlayerUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+                .setLocation(BridgeUtils.convertLocation(location))
+                .setSound(patchbukkit.sound.Sound.newBuilder()
+                    .setName(sound)
+                    .setCategory(category.name())
+                    .build())
+                .setVolume(volume)
+                .setPitch(pitch)
+                .setSeed(seed)
+                .build();
+            NativeBridgeFfi.playerPlaySound(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull Sound sound, float volume, float pitch) {
+        playSound(entity, sound, SoundCategory.MASTER, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull String sound, float volume, float pitch) {
+        playSound(entity, sound, SoundCategory.MASTER, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull Sound sound, @NotNull SoundCategory category, float volume, float pitch) {
+        playSound(entity, sound.getKey().asString(), category, volume, pitch);
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull String sound, @NotNull SoundCategory category, float volume, float pitch) {
+        playSound(entity, sound, category, volume, pitch, 0L);
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull Sound sound, @NotNull SoundCategory category, float volume, float pitch, long seed) {
+        playSound(entity, sound.getKey().asString(), category, volume, pitch, seed);
+    }
+
+    @Override
+    public void playSound(@NotNull Entity entity, @NotNull String sound, @NotNull SoundCategory category, float volume, float pitch, long seed) {
+        try {
+            var req = patchbukkit.sound.PlayerEntityPlaySoundRequest.newBuilder()
+                .setPlayerUuid(BridgeUtils.convertUuid(this.getUniqueId()))
+                .setEntityUuid(BridgeUtils.convertUuid(entity.getUniqueId()))
+                .setSound(patchbukkit.sound.Sound.newBuilder()
+                    .setName(sound)
+                    .setCategory(category.name())
+                    .build())
+                .setVolume(volume)
+                .setPitch(pitch)
+                .setSeed(seed)
+                .build();
+            NativeBridgeFfi.playerEntityPlaySound(req);
+        } catch (Throwable ignored) {}
+    }
+
+    // --- Block Changes & Updates ---
+
+    @Override
+    public void sendBlockChange(@NotNull Location loc, @NotNull Material material, byte data) {
+        sendBlockChange(loc, material.createBlockData());
+    }
+
+    @Override
+    public void sendBlockChange(@NotNull Location loc, @NotNull BlockData block) {
+        if (loc == null || block == null) return;
+        try {
+            var req = SendBlockChangeRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setX(loc.getBlockX())
+                .setY(loc.getBlockY())
+                .setZ(loc.getBlockZ())
+                .setBlockState(block.getAsString())
+                .build();
+            NativeBridgeFfi.sendBlockChange(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void sendBlockChanges(@NotNull Collection<BlockState> blocks) {
+        if (blocks == null) return;
+        for (BlockState b : blocks) {
+            sendBlockChange(b.getLocation(), b.getBlockData());
+        }
+    }
+
+    @Override
+    public void sendMultiBlockChange(@NotNull Map<? extends Position, BlockData> blockChanges) {
+        if (blockChanges == null) return;
+        for (Map.Entry<? extends Position, BlockData> entry : blockChanges.entrySet()) {
+            Position pos = entry.getKey();
+            Location loc = new Location(getWorld(), pos.x(), pos.y(), pos.z());
+            sendBlockChange(loc, entry.getValue());
+        }
+    }
+
+    @Override
+    public void sendBlockDamage(@NotNull Location loc, float progress, @NotNull Entity source) {
+    }
+
+    @Override
+    public void sendBlockDamage(@NotNull Location loc, float progress, int sourceId) {
+    }
+
+    @Override
+    public void sendSignChange(@NotNull Location loc, @Nullable String[] lines) {
+        sendSignChange(loc, lines, DyeColor.BLACK);
+    }
+
+    @Override
+    public void sendSignChange(@NotNull Location loc, @Nullable String[] lines, @NotNull DyeColor dyeColor) {
+        sendSignChange(loc, lines, dyeColor, false);
+    }
+
+    @Override
+    public void sendSignChange(@NotNull Location loc, @Nullable String[] lines, @NotNull DyeColor dyeColor, boolean hasGlowingText) {
+    }
+
+    @Override
+    public void sendSignChange(@NotNull Location loc, @Nullable List<? extends Component> lines, @NotNull DyeColor dyeColor, boolean hasGlowingText) {
+    }
+
+    @Override
+    public void sendBlockUpdate(@NotNull Location loc, @NotNull TileState tileState) {
+        sendBlockChange(loc, tileState.getBlockData());
+    }
+
+    // --- Resource Packs ---
+
+    @Override
+    public void setResourcePack(@NotNull String url) {
+        setResourcePack(url, (byte[]) null);
+    }
+
+    @Override
+    public void setResourcePack(@NotNull String url, @Nullable byte[] hash) {
+        setResourcePack(url, hash, "");
+    }
+
+    @Override
+    public void setResourcePack(@NotNull String url, @Nullable byte[] hash, @Nullable String prompt) {
+        setResourcePack(url, hash, prompt, false);
+    }
+
+    @Override
+    public void setResourcePack(@NotNull String url, @Nullable byte[] hash, boolean required) {
+        setResourcePack(url, hash, "", required);
+    }
+
+    @Override
+    public void setResourcePack(@NotNull String url, @Nullable byte[] hash, @Nullable String prompt, boolean required) {
+        try {
+            var req = SendResourcePackRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setUrl(url)
+                .setPrompt(prompt != null ? prompt : "")
+                .setRequired(required)
+                .build();
+            NativeBridgeFfi.sendResourcePack(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void setResourcePack(@NotNull String url, @Nullable byte[] hash, @Nullable Component prompt, boolean required) {
+        setResourcePack(url, hash, prompt != null ? LegacyComponentSerializer.legacySection().serialize(prompt) : "", required);
+    }
+
+    @Override
+    public void setResourcePack(@NotNull UUID id, @NotNull String url, @Nullable byte[] hash, @Nullable Component prompt, boolean required) {
+        setResourcePack(url, hash, prompt, required);
+    }
+
+    @Override
+    public void setResourcePack(@NotNull UUID id, @NotNull String url, @Nullable byte[] hash, @Nullable String prompt, boolean required) {
+        setResourcePack(url, hash, prompt, required);
+    }
+
+    public void addResourcePack(@NotNull UUID id, @NotNull String url, @Nullable byte[] hash, @Nullable Component prompt, boolean required) {
+        setResourcePack(url, hash, prompt, required);
+    }
+
+    @Override
+    public void addResourcePack(@NotNull UUID id, @NotNull String url, @Nullable byte[] hash, @Nullable String prompt, boolean required) {
+        setResourcePack(url, hash, prompt, required);
+    }
+
+    @Override
+    public void removeResourcePack(@NotNull UUID id) {
+    }
+
+    @Override
+    public void removeResourcePacks() {
+    }
+
+    @Override
+    public @Nullable Status getResourcePackStatus() {
+        return Status.SUCCESSFULLY_LOADED;
+    }
+
+    // --- Connection & Network ---
+
+    @Override
+    public @Nullable InetSocketAddress getAddress() {
+        try {
+            var resp = NativeBridgeFfi.getPlayerConnectionInfo(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return new InetSocketAddress(resp.getAddress(), resp.getPort());
+            }
+        } catch (Throwable ignored) {}
+        return new InetSocketAddress("127.0.0.1", 25565);
+    }
+
+    @Override
+    public @Nullable InetSocketAddress getHAProxyAddress() {
+        return getAddress();
+    }
+
+    @Override
+    public int getPing() {
+        try {
+            var resp = NativeBridgeFfi.getPlayerConnectionInfo(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return resp.getPing();
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    @Override
+    public @NotNull String getClientBrandName() {
+        try {
+            var resp = NativeBridgeFfi.getPlayerConnectionInfo(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return resp.getClientBrand();
+            }
+        } catch (Throwable ignored) {}
+        return "vanilla";
+    }
+
+    @Override
+    public int getProtocolVersion() {
+        return 769; // 1.21.4
+    }
+
+    @Override
+    public @Nullable InetSocketAddress getVirtualHost() {
+        return new InetSocketAddress("127.0.0.1", 25565);
+    }
+
+    @Override
+    public boolean isTransferred() {
+        return false;
+    }
+
+    @Override
+    public CompletableFuture<byte[]> retrieveCookie(@NotNull NamespacedKey key) {
+        return CompletableFuture.completedFuture(new byte[0]);
+    }
+
+    @Override
+    public void storeCookie(@NotNull NamespacedKey key, @NotNull byte[] value) {
+    }
+
+    @Override
+    public void transfer(@NotNull String host, int port) {
+    }
+
+    // --- Flying & Movement ---
+
+    @Override
+    public boolean getAllowFlight() {
+        try {
+            var resp = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.getUniqueId()));
+            if (resp != null) {
+                return resp.getAllowFlying();
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    @Override
+    public void setAllowFlight(boolean flight) {
+        try {
+            var uuid = BridgeUtils.convertUuid(this.getUniqueId());
+            var current = NativeBridgeFfi.getAbilities(uuid);
+            var builder = current != null ? current.toBuilder() : patchbukkit.abilities.Abilities.newBuilder();
+            builder.setAllowFlying(flight);
+            NativeBridgeFfi.setAbilities(patchbukkit.abilities.SetAbilitiesRequest.newBuilder()
+                .setUuid(uuid)
+                .setAbilities(builder.build())
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public boolean isFlying() {
-        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
-        return abilities != null && abilities.getFlying();
+        try {
+            var resp = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.getUniqueId()));
+            if (resp != null) {
+                return resp.getFlying();
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     @Override
     public void setFlying(boolean value) {
-        var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
-        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
-        builder.setFlying(value);
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
+        try {
+            var uuid = BridgeUtils.convertUuid(this.getUniqueId());
+            var current = NativeBridgeFfi.getAbilities(uuid);
+            var builder = current != null ? current.toBuilder() : patchbukkit.abilities.Abilities.newBuilder();
+            builder.setFlying(value);
+            NativeBridgeFfi.setAbilities(patchbukkit.abilities.SetAbilitiesRequest.newBuilder()
+                .setUuid(uuid)
+                .setAbilities(builder.build())
+                .build());
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public float getFlySpeed() {
+        try {
+            var resp = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.getUniqueId()));
+            if (resp != null) {
+                return resp.getFlySpeed();
+            }
+        } catch (Throwable ignored) {}
+        return 0.1f;
     }
 
     @Override
     public void setFlySpeed(float value) throws IllegalArgumentException {
         if (value < -1.0f || value > 1.0f) {
-            throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
+            throw new IllegalArgumentException("Fly speed must be between -1.0 and 1.0");
         }
-        var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
-        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
-        builder.setFlySpeed(value);
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
+        try {
+            var uuid = BridgeUtils.convertUuid(this.getUniqueId());
+            var current = NativeBridgeFfi.getAbilities(uuid);
+            var builder = current != null ? current.toBuilder() : patchbukkit.abilities.Abilities.newBuilder();
+            builder.setFlySpeed(value);
+            NativeBridgeFfi.setAbilities(patchbukkit.abilities.SetAbilitiesRequest.newBuilder()
+                .setUuid(uuid)
+                .setAbilities(builder.build())
+                .build());
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public float getWalkSpeed() {
+        try {
+            var resp = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.getUniqueId()));
+            if (resp != null) {
+                return resp.getWalkSpeed();
+            }
+        } catch (Throwable ignored) {}
+        return 0.2f;
     }
 
     @Override
     public void setWalkSpeed(float value) throws IllegalArgumentException {
         if (value < -1.0f || value > 1.0f) {
-            throw new IllegalArgumentException("Speed value " + value + " is not between -1.0 and 1.0");
+            throw new IllegalArgumentException("Walk speed must be between -1.0 and 1.0");
         }
-        var playerUuid = BridgeUtils.convertUuid(this.getUniqueId());
-        var abilities = NativeBridgeFfi.getAbilities(playerUuid);
-        var builder = (abilities != null ? abilities.toBuilder() : patchbukkit.abilities.Abilities.newBuilder());
-        builder.setWalkSpeed(value);
-        NativeBridgeFfi.setAbilities(SetAbilitiesRequest.newBuilder().setAbilities(builder.build()).setUuid(playerUuid).build());
-    }
-
-    @Override
-    public float getFlySpeed() {
-        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
-        return abilities != null ? abilities.getFlySpeed() : 0.05f;
-    }
-
-    @Override
-    public float getWalkSpeed() {
-        var abilities = NativeBridgeFfi.getAbilities(BridgeUtils.convertUuid(this.uuid));
-        return abilities != null ? abilities.getWalkSpeed() : 0.1f;
-    }
-
-    @Override
-    public void setResourcePack(String url, byte @org.jspecify.annotations.Nullable [] hash,
-            @org.jspecify.annotations.Nullable String prompt, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setResourcePack'");
-    }
-
-    @Override
-    public void setResourcePack(UUID id, String url, byte @org.jspecify.annotations.Nullable [] hash,
-            @org.jspecify.annotations.Nullable String prompt, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setResourcePack'");
-    }
-
-    @Override
-    public void setResourcePack(UUID uuid, String url, byte @org.jspecify.annotations.Nullable [] hash,
-            @org.jspecify.annotations.Nullable Component prompt, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setResourcePack'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable Status getResourcePackStatus() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getResourcePackStatus'");
-    }
-
-    @Override
-    public void addResourcePack(UUID id, String url, byte @org.jspecify.annotations.Nullable [] hash,
-            @org.jspecify.annotations.Nullable String prompt, boolean force) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addResourcePack'");
-    }
-
-    @Override
-    public void removeResourcePack(UUID id) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeResourcePack'");
-    }
-
-    @Override
-    public void removeResourcePacks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeResourcePacks'");
-    }
-
-    @Override
-    public Scoreboard getScoreboard() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getScoreboard'");
-    }
-
-    @Override
-    public void setScoreboard(Scoreboard scoreboard) throws IllegalArgumentException, IllegalStateException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setScoreboard'");
-    }
-
-    private WorldBorder customWorldBorder;
-
-    @Override
-    public @org.jspecify.annotations.Nullable WorldBorder getWorldBorder() {
-        return this.customWorldBorder != null ? this.customWorldBorder : getWorld().getWorldBorder();
-    }
-
-    @Override
-    public void setWorldBorder(@org.jspecify.annotations.Nullable WorldBorder border) {
-        this.customWorldBorder = border;
-    }
-
-    @Override
-    public void sendHealthUpdate(double health, int foodLevel, float saturation) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendHealthUpdate'");
-    }
-
-    @Override
-    public void sendHealthUpdate() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendHealthUpdate'");
-    }
-
-    @Override
-    public boolean isHealthScaled() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isHealthScaled'");
-    }
-
-    @Override
-    public void setHealthScaled(boolean scale) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setHealthScaled'");
-    }
-
-    @Override
-    public void setHealthScale(double scale) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setHealthScale'");
-    }
-
-    @Override
-    public double getHealthScale() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getHealthScale'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable Entity getSpectatorTarget() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getSpectatorTarget'");
-    }
-
-    @Override
-    public void setSpectatorTarget(@org.jspecify.annotations.Nullable Entity entity) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSpectatorTarget'");
-    }
-
-    @Override
-    public void sendTitle(@org.jspecify.annotations.Nullable String title,
-            @org.jspecify.annotations.Nullable String subtitle) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendTitle'");
-    }
-
-    @Override
-    public void sendTitle(@org.jspecify.annotations.Nullable String title,
-            @org.jspecify.annotations.Nullable String subtitle, int fadeIn, int stay, int fadeOut) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendTitle'");
-    }
-
-    @Override
-    public void resetTitle() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetTitle'");
-    }
-
-    @Override
-    public <T> void spawnParticle(Particle particle, double x, double y, double z, int count, double offsetX,
-            double offsetY, double offsetZ, double extra, @org.jspecify.annotations.Nullable T data, boolean force) {
-        if (particle == null) return;
-        var request = patchbukkit.world.SpawnParticleRequest.newBuilder()
-            .setWorldUuid(BridgeUtils.convertUuid(this.getWorld().getUID()))
-            .setParticle(particle.name().toLowerCase())
-            .setX(x).setY(y).setZ(z)
-            .setCount(count)
-            .setOffsetX(offsetX).setOffsetY(offsetY).setOffsetZ(offsetZ)
-            .setExtra(extra)
-            .build();
-        NativeBridgeFfi.spawnParticle(request);
-    }
-
-    @Override
-    public AdvancementProgress getAdvancementProgress(Advancement advancement) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAdvancementProgress'");
-    }
-
-    @Override
-    public int getClientViewDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getClientViewDistance'");
-    }
-
-    @Override
-    public Locale locale() {
-        String locStr = getLocale();
-        if (locStr != null && !locStr.isEmpty()) {
-            String[] parts = locStr.split("_");
-            if (parts.length >= 2) {
-                return new Locale(parts[0], parts[1]);
-            } else if (parts.length == 1) {
-                return new Locale(parts[0]);
-            }
-        }
-        return Locale.US;
-    }
-
-    @Override
-    public int getPing() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPing'");
-    }
-
-    @Override
-    public String getLocale() {
         try {
-            var resp = NativeBridgeFfi.getPlayerLocale(BridgeUtils.convertUuid(this.uuid));
-            if (resp != null && resp.getLocale() != null && !resp.getLocale().isEmpty()) {
-                return resp.getLocale();
+            var uuid = BridgeUtils.convertUuid(this.getUniqueId());
+            var current = NativeBridgeFfi.getAbilities(uuid);
+            var builder = current != null ? current.toBuilder() : patchbukkit.abilities.Abilities.newBuilder();
+            builder.setWalkSpeed(value);
+            NativeBridgeFfi.setAbilities(patchbukkit.abilities.SetAbilitiesRequest.newBuilder()
+                .setUuid(uuid)
+                .setAbilities(builder.build())
+                .build());
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public void setFlyingFallDamage(@NotNull TriState state) {
+        this.flyingFallDamage = state;
+    }
+
+    @Override
+    public @NotNull TriState hasFlyingFallDamage() {
+        return this.flyingFallDamage;
+    }
+
+    @Override
+    public void unsetFixedPose() {
+    }
+
+    @Override
+    public void resetFlyingTicks() {
+    }
+
+    // --- Experience & Level ---
+
+    @Override
+    public int getLevel() {
+        try {
+            var resp = NativeBridgeFfi.getExperience(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return resp.getLevel();
             }
         } catch (Throwable ignored) {}
-        return "en_us";
+        return 0;
     }
 
     @Override
-    public boolean getAffectsSpawning() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getAffectsSpawning'");
+    public void setLevel(int level) {
+        try {
+            var req = SetExperienceRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setLevel(level)
+                .setProgress(getExp())
+                .setTotalExperience(getTotalExperience())
+                .build();
+            NativeBridgeFfi.setExperience(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public void setAffectsSpawning(boolean affects) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setAffectsSpawning'");
+    public float getExp() {
+        try {
+            var resp = NativeBridgeFfi.getExperience(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return resp.getProgress();
+            }
+        } catch (Throwable ignored) {}
+        return 0.0f;
     }
 
     @Override
-    public int getViewDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getViewDistance'");
+    public void setExp(float exp) {
+        try {
+            var req = SetExperienceRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setLevel(getLevel())
+                .setProgress(exp)
+                .setTotalExperience(getTotalExperience())
+                .build();
+            NativeBridgeFfi.setExperience(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public void setViewDistance(int viewDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setViewDistance'");
+    public int getTotalExperience() {
+        try {
+            var resp = NativeBridgeFfi.getExperience(BridgeUtils.convertUuid(getUniqueId()));
+            if (resp != null) {
+                return resp.getTotalExperience();
+            }
+        } catch (Throwable ignored) {}
+        return 0;
     }
 
     @Override
-    public int getSimulationDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getSimulationDistance'");
+    public void setTotalExperience(int exp) {
+        try {
+            var req = SetExperienceRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setLevel(getLevel())
+                .setProgress(getExp())
+                .setTotalExperience(exp)
+                .build();
+            NativeBridgeFfi.setExperience(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public void setSimulationDistance(int simulationDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSimulationDistance'");
+    public void giveExp(int amount) {
+        giveExp(amount, false);
     }
 
     @Override
-    public int getSendViewDistance() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getSendViewDistance'");
+    public void giveExp(int amount, boolean applyMending) {
+        int newTotal = Math.max(0, getTotalExperience() + amount);
+        setTotalExperience(newTotal);
     }
 
     @Override
-    public void setSendViewDistance(int viewDistance) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setSendViewDistance'");
+    public void giveExpLevels(int amount) {
+        setLevel(Math.max(0, getLevel() + amount));
     }
 
     @Override
-    public void updateCommands() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updateCommands'");
+    public int calculateTotalExperiencePoints() {
+        return getTotalExperience();
     }
 
     @Override
-    public void openBook(ItemStack book) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'openBook'");
+    public void setExperienceLevelAndProgress(int totalExperience) {
+        setTotalExperience(totalExperience);
     }
 
-    public void openVirtualSign(Position block, Side side) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'openVirtualSign'");
+    @Override
+    public int getExperiencePointsNeededForNextLevel() {
+        int level = getLevel();
+        if (level >= 30) return 112 + (level - 30) * 9;
+        if (level >= 15) return 37 + (level - 15) * 5;
+        return 7 + level * 2;
     }
+
+    @Override
+    public void sendExperienceChange(float progress) {
+        sendExperienceChange(progress, getLevel());
+    }
+
+    @Override
+    public void sendExperienceChange(float progress, int level) {
+        try {
+            var req = SetExperienceRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setLevel(level)
+                .setProgress(progress)
+                .setTotalExperience(getTotalExperience())
+                .build();
+            NativeBridgeFfi.setExperience(req);
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public int applyMending(int amount) {
+        return amount;
+    }
+
+    @Override
+    public int getExpCooldown() {
+        return this.expCooldown;
+    }
+
+    @Override
+    public void setExpCooldown(int ticks) {
+        this.expCooldown = ticks;
+    }
+
+    // --- Game Events & Screens ---
 
     @Override
     public void showDemoScreen() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showDemoScreen'");
+        try {
+            var req = SendGameEventRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setEventType(5) // Demo
+                .setValue(0.0f)
+                .build();
+            NativeBridgeFfi.sendGameEvent(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public boolean isAllowingServerListings() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isAllowingServerListings'");
+    public void showWinScreen() {
+        this.hasSeenWinScreen = true;
+        try {
+            var req = SendGameEventRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setEventType(4) // WinGame
+                .setValue(1.0f)
+                .build();
+            NativeBridgeFfi.sendGameEvent(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public PlayerProfile getPlayerProfile() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getPlayerProfile'");
+    public boolean hasSeenWinScreen() {
+        return this.hasSeenWinScreen;
     }
 
     @Override
-    public void setPlayerProfile(PlayerProfile profile) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setPlayerProfile'");
-    }
-
-    @Override
-    public float getCooldownPeriod() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getCooldownPeriod'");
-    }
-
-    @Override
-    public float getCooledAttackStrength(float adjustTicks) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getCooledAttackStrength'");
-    }
-
-    @Override
-    public void resetCooldown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetCooldown'");
-    }
-
-    @Override
-    public <T> T getClientOption(ClientOption<T> option) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getClientOption'");
-    }
-
-    @Override
-    public void sendOpLevel(byte level) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendOpLevel'");
-    }
-
-    @Override
-    public void addAdditionalChatCompletions(Collection<String> completions) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'addAdditionalChatCompletions'");
-    }
-
-    @Override
-    public void removeAdditionalChatCompletions(Collection<String> completions) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'removeAdditionalChatCompletions'");
-    }
-
-    @Override
-    public @org.jspecify.annotations.Nullable String getClientBrandName() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getClientBrandName'");
-    }
-
-    @Override
-    public void lookAt(Entity entity, LookAnchor playerAnchor, LookAnchor entityAnchor) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'lookAt'");
+    public void setHasSeenWinScreen(boolean hasSeenWinScreen) {
+        this.hasSeenWinScreen = hasSeenWinScreen;
     }
 
     @Override
     public void showElderGuardian(boolean silent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'showElderGuardian'");
-    }
-
-    @Override
-    public int getWardenWarningCooldown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getWardenWarningCooldown'");
-    }
-
-    @Override
-    public void setWardenWarningCooldown(int cooldown) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWardenWarningCooldown'");
-    }
-
-    @Override
-    public int getWardenTimeSinceLastWarning() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getWardenTimeSinceLastWarning'");
-    }
-
-    @Override
-    public void setWardenTimeSinceLastWarning(int time) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWardenTimeSinceLastWarning'");
+        try {
+            var req = SendGameEventRequest.newBuilder()
+                .setUuid(BridgeUtils.convertUuid(getUniqueId()))
+                .setEventType(10) // ElderGuardian
+                .setValue(0.0f)
+                .build();
+            NativeBridgeFfi.sendGameEvent(req);
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public int getWardenWarningLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getWardenWarningLevel'");
+        return this.wardenWarningLevel;
     }
 
     @Override
-    public void setWardenWarningLevel(int warningLevel) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setWardenWarningLevel'");
+    public void setWardenWarningLevel(int wardenWarningLevel) {
+        this.wardenWarningLevel = wardenWarningLevel;
     }
 
     @Override
     public void increaseWardenWarningLevel() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'increaseWardenWarningLevel'");
+        this.wardenWarningLevel++;
     }
 
     @Override
-    public Duration getIdleDuration() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getIdleDuration'");
+    public int getWardenWarningCooldown() {
+        return this.wardenWarningCooldown;
     }
 
     @Override
-    public void resetIdleDuration() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'resetIdleDuration'");
+    public void setWardenWarningCooldown(int ticks) {
+        this.wardenWarningCooldown = ticks;
     }
 
     @Override
-    public @Unmodifiable Set<Long> getSentChunkKeys() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getSentChunkKeys'");
+    public int getWardenTimeSinceLastWarning() {
+        return this.wardenTimeSinceLastWarning;
     }
 
     @Override
-    public @Unmodifiable Set<Chunk> getSentChunks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getSentChunks'");
+    public void setWardenTimeSinceLastWarning(int ticks) {
+        this.wardenTimeSinceLastWarning = ticks;
+    }
+
+    @Override
+    public void sendHurtAnimation(float yaw) {
+    }
+
+    // --- Health Scale & Updates ---
+
+    @Override
+    public boolean isHealthScaled() {
+        return this.healthScaled;
+    }
+
+    @Override
+    public void setHealthScaled(boolean scale) {
+        this.healthScaled = scale;
+    }
+
+    @Override
+    public double getHealthScale() {
+        return this.healthScale;
+    }
+
+    @Override
+    public void setHealthScale(double scale) throws IllegalArgumentException {
+        if (scale <= 0) {
+            throw new IllegalArgumentException("Health scale must be greater than 0");
+        }
+        this.healthScale = scale;
+        this.healthScaled = true;
+    }
+
+    @Override
+    public void sendHealthUpdate(double health, int foodLevel, float saturation) {
+        setHealth(health);
+        setFoodLevel(foodLevel);
+        setSaturation(saturation);
+    }
+
+    @Override
+    public void sendHealthUpdate() {
+        sendHealthUpdate(getHealth(), getFoodLevel(), getSaturation());
+    }
+
+    // --- Scoreboards & BossBars & WorldBorder ---
+
+    @Override
+    public @NotNull Scoreboard getScoreboard() {
+        return this.scoreboard != null ? this.scoreboard : PatchBukkitServer.getInstance().getScoreboardManager().getMainScoreboard();
+    }
+
+    @Override
+    public void setScoreboard(@NotNull Scoreboard scoreboard) throws IllegalArgumentException, IllegalStateException {
+        this.scoreboard = scoreboard;
+    }
+
+    @Override
+    public @NotNull Iterable<? extends BossBar> activeBossBars() {
+        return Collections.unmodifiableSet(this.bossBars);
+    }
+
+    @Override
+    public void showBossBar(@NotNull BossBar bar) {
+        this.bossBars.add(bar);
+    }
+
+    @Override
+    public void hideBossBar(@NotNull BossBar bar) {
+        this.bossBars.remove(bar);
+    }
+
+    @Override
+    public @Nullable WorldBorder getWorldBorder() {
+        return getWorld().getWorldBorder();
+    }
+
+    @Override
+    public void setWorldBorder(@Nullable WorldBorder border) {
+    }
+
+    // --- Statistics ---
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic) throws IllegalArgumentException {
+        incrementStatistic(statistic, 1);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic) throws IllegalArgumentException {
+        decrementStatistic(statistic, 1);
+    }
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, getStatistic(statistic) + amount);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, Math.max(0, getStatistic(statistic) - amount));
+    }
+
+    @Override
+    public void setStatistic(@NotNull Statistic statistic, int newValue) throws IllegalArgumentException {
+        this.statistics.put(statistic, Math.max(0, newValue));
+    }
+
+    @Override
+    public int getStatistic(@NotNull Statistic statistic) throws IllegalArgumentException {
+        return this.statistics.getOrDefault(statistic, 0);
+    }
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic, @NotNull Material material) throws IllegalArgumentException {
+        incrementStatistic(statistic, material, 1);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic, @NotNull Material material) throws IllegalArgumentException {
+        decrementStatistic(statistic, material, 1);
+    }
+
+    @Override
+    public int getStatistic(@NotNull Statistic statistic, @NotNull Material material) throws IllegalArgumentException {
+        return this.materialStatistics.computeIfAbsent(statistic, k -> new EnumMap<>(Material.class)).getOrDefault(material, 0);
+    }
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic, @NotNull Material material, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, material, getStatistic(statistic, material) + amount);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic, @NotNull Material material, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, material, Math.max(0, getStatistic(statistic, material) - amount));
+    }
+
+    @Override
+    public void setStatistic(@NotNull Statistic statistic, @NotNull Material material, int newValue) throws IllegalArgumentException {
+        this.materialStatistics.computeIfAbsent(statistic, k -> new EnumMap<>(Material.class)).put(material, Math.max(0, newValue));
+    }
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType) throws IllegalArgumentException {
+        incrementStatistic(statistic, entityType, 1);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType) throws IllegalArgumentException {
+        decrementStatistic(statistic, entityType, 1);
+    }
+
+    @Override
+    public int getStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType) throws IllegalArgumentException {
+        return this.entityStatistics.computeIfAbsent(statistic, k -> new EnumMap<>(EntityType.class)).getOrDefault(entityType, 0);
+    }
+
+    @Override
+    public void incrementStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, entityType, getStatistic(statistic, entityType) + amount);
+    }
+
+    @Override
+    public void decrementStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType, int amount) throws IllegalArgumentException {
+        setStatistic(statistic, entityType, Math.max(0, getStatistic(statistic, entityType) - amount));
+    }
+
+    @Override
+    public void setStatistic(@NotNull Statistic statistic, @NotNull EntityType entityType, int newValue) throws IllegalArgumentException {
+        this.entityStatistics.computeIfAbsent(statistic, k -> new EnumMap<>(EntityType.class)).put(entityType, Math.max(0, newValue));
+    }
+
+    // --- Player Visibility & Hiding ---
+
+    @Override
+    public void hidePlayer(@NotNull Player player) {
+        this.hiddenPlayers.add(player);
+    }
+
+    @Override
+    public void hidePlayer(@NotNull Plugin plugin, @NotNull Player player) {
+        this.hiddenPlayersPlugins.computeIfAbsent(player.getUniqueId(), k -> new HashSet<>()).add(plugin);
+        hidePlayer(player);
+    }
+
+    @Override
+    public void showPlayer(@NotNull Player player) {
+        this.hiddenPlayers.remove(player);
+    }
+
+    @Override
+    public void showPlayer(@NotNull Plugin plugin, @NotNull Player player) {
+        Set<Plugin> set = this.hiddenPlayersPlugins.get(player.getUniqueId());
+        if (set != null) {
+            set.remove(plugin);
+            if (set.isEmpty()) {
+                this.hiddenPlayersPlugins.remove(player.getUniqueId());
+                showPlayer(player);
+            }
+        } else {
+            showPlayer(player);
+        }
+    }
+
+    @Override
+    public boolean canSee(@NotNull Player player) {
+        return !this.hiddenPlayers.contains(player);
+    }
+
+    @Override
+    public boolean canSee(@NotNull Entity entity) {
+        if (entity instanceof Player player) {
+            return canSee(player);
+        }
+        return true;
+    }
+
+    @Override
+    public void hideEntity(@NotNull Plugin plugin, @NotNull Entity entity) {
+        if (entity instanceof Player player) {
+            hidePlayer(plugin, player);
+        }
+    }
+
+    @Override
+    public void showEntity(@NotNull Plugin plugin, @NotNull Entity entity) {
+        if (entity instanceof Player player) {
+            showPlayer(plugin, player);
+        }
+    }
+
+    private final Set<UUID> unlistedPlayers = new HashSet<>();
+
+    @Override
+    public boolean isListed(@NotNull Player player) {
+        return !this.unlistedPlayers.contains(player.getUniqueId());
+    }
+
+    @Override
+    public boolean unlistPlayer(@NotNull Player player) {
+        return this.unlistedPlayers.add(player.getUniqueId());
+    }
+
+    @Override
+    public boolean listPlayer(@NotNull Player player) {
+        return this.unlistedPlayers.remove(player.getUniqueId());
+    }
+
+    // --- Inventory & Items & Give ---
+
+    @Override
+    public void updateInventory() {
+        try {
+            NativeBridgeFfi.updateInventory(BridgeUtils.convertUuid(getUniqueId()));
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public @NotNull io.papermc.paper.entity.PlayerGiveResult give(@NotNull Collection<ItemStack> items, boolean dropIfFull) {
+        if (items != null) {
+            for (ItemStack item : items) {
+                if (item == null || item.isEmpty()) continue;
+                HashMap<Integer, ItemStack> leftover = getInventory().addItem(item);
+                if (dropIfFull && !leftover.isEmpty()) {
+                    for (ItemStack drop : leftover.values()) {
+                        getWorld().dropItem(getLocation(), drop);
+                    }
+                }
+            }
+        }
+        return new io.papermc.paper.entity.PlayerGiveResult() {
+            @Override
+            public @NotNull Collection<org.bukkit.entity.Item> drops() {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public @NotNull Collection<ItemStack> leftovers() {
+                return Collections.emptyList();
+            }
+        };
+    }
+
+    @Override
+    public void openBook(@NotNull ItemStack book) {
+    }
+
+    @Override
+    public void openSign(@NotNull Sign sign) {
+        openSign(sign, Side.FRONT);
+    }
+
+    @Override
+    public void openSign(@NotNull Sign sign, @NotNull Side side) {
+    }
+
+    @Override
+    public void openVirtualSign(@NotNull Position position, @NotNull Side side) {
+    }
+
+    // --- View & Simulation Distance ---
+
+    @Override
+    public int getViewDistance() {
+        return this.viewDistance > 0 ? this.viewDistance : PatchBukkitServer.getInstance().getViewDistance();
+    }
+
+    @Override
+    public void setViewDistance(int viewDistance) {
+        this.viewDistance = viewDistance;
+    }
+
+    @Override
+    public int getSimulationDistance() {
+        return this.simulationDistance > 0 ? this.simulationDistance : PatchBukkitServer.getInstance().getSimulationDistance();
+    }
+
+    @Override
+    public void setSimulationDistance(int simulationDistance) {
+        this.simulationDistance = simulationDistance;
+    }
+
+    @Override
+    public int getSendViewDistance() {
+        return this.sendViewDistance > 0 ? this.sendViewDistance : getViewDistance();
+    }
+
+    @Override
+    public void setSendViewDistance(int viewDistance) {
+        this.sendViewDistance = viewDistance;
+    }
+
+    @Override
+    public int getClientViewDistance() {
+        return getViewDistance();
+    }
+
+    @Override
+    public boolean getAffectsSpawning() {
+        return this.affectsSpawning;
+    }
+
+    @Override
+    public void setAffectsSpawning(boolean affects) {
+        this.affectsSpawning = affects;
+    }
+
+    // --- Profile & Chunks & Plugin Channels ---
+
+    @Override
+    public @NotNull com.destroystokyo.paper.profile.PlayerProfile getPlayerProfile() {
+        return PatchBukkitServer.getInstance().createProfile(getUniqueId(), getName());
+    }
+
+    @Override
+    public void setPlayerProfile(@NotNull com.destroystokyo.paper.profile.PlayerProfile profile) {
+    }
+
+    @Override
+    public @NotNull Set<Long> getSentChunkKeys() {
+        return Collections.emptySet();
+    }
+
+    @Override
+    public @NotNull Set<org.bukkit.Chunk> getSentChunks() {
+        return Collections.emptySet();
     }
 
     @Override
     public boolean isChunkSent(long chunkKey) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'isChunkSent'");
+        return true;
     }
 
     @Override
-    public void sendEntityEffect(EntityEffect effect, Entity target) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendEntityEffect'");
+    public void sendPluginMessage(@NotNull Plugin source, @NotNull String channel, @NotNull byte[] message) {
+        StandardMessenger.validatePluginMessage(PatchBukkitServer.getInstance().getMessenger(), source, channel, message);
     }
 
     @Override
-    public PlayerGiveResult give(Collection<ItemStack> items, boolean dropIfFull) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'give'");
+    public @NotNull Set<String> getListeningPluginChannels() {
+        return Collections.unmodifiableSet(this.listeningChannels);
     }
+
+    // --- Conversations ---
+
+    @Override
+    public boolean isConversing() {
+        return false;
+    }
+
+    @Override
+    public void acceptConversationInput(@NotNull String input) {
+    }
+
+    @Override
+    public boolean beginConversation(@NotNull Conversation conversation) {
+        return false;
+    }
+
+    @Override
+    public void abandonConversation(@NotNull Conversation conversation) {
+    }
+
+    @Override
+    public void abandonConversation(@NotNull Conversation conversation, @NotNull ConversationAbandonedEvent details) {
+    }
+
+    // --- Attack Cooldown & Period ---
+
+    @Override
+    public float getCooldownPeriod() {
+        return 1.0f;
+    }
+
+    @Override
+    public float getCooledAttackStrength(float adjustTicks) {
+        return 1.0f;
+    }
+
+    @Override
+    public void resetCooldown() {
+    }
+
+    // --- Chat completions ---
+
+    @Override
+    public void addCustomChatCompletions(@NotNull Collection<String> completions) {
+    }
+
+    @Override
+    public void removeCustomChatCompletions(@NotNull Collection<String> completions) {
+    }
+
+    @Override
+    public void setCustomChatCompletions(@NotNull Collection<String> completions) {
+    }
+
+    @Override
+    public void addAdditionalChatCompletions(@NotNull Collection<String> completions) {
+    }
+
+    @Override
+    public void removeAdditionalChatCompletions(@NotNull Collection<String> completions) {
+    }
+
+    // --- Locale ---
+
+    @Override
+    public @NotNull String getLocale() {
+        return "en_us";
+    }
+
+    @Override
+    public @Nullable Locale locale() {
+        return Locale.US;
+    }
+
+    // --- Misc unimplemented/unsupported helpers ---
+
+    @Override
+    public void playEffect(@NotNull Location loc, @NotNull Effect effect, int data) {
+    }
+
+    @Override
+    public <T> void playEffect(@NotNull Location loc, @NotNull Effect effect, @Nullable T data) {
+    }
+
+    @Override
+    public void playNote(@NotNull Location loc, byte instrument, byte note) {
+    }
+
+    @Override
+    public void playNote(@NotNull Location loc, @NotNull Instrument instrument, @NotNull Note note) {
+    }
+
+    @Override
+    public void sendMap(@NotNull MapView map) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, @Nullable T data) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, @Nullable T data) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ, @Nullable T data) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, @Nullable T data) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ, double extra) {
+    }
+
+    @Override
+    public void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, @NotNull Location location, int count, double offsetX, double offsetY, double offsetZ, double extra, @Nullable T data) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @Nullable T data) {
+    }
+
+    @Override
+    public <T> void spawnParticle(@NotNull Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @Nullable T data, boolean force) {
+        spawnParticle(particle, x, y, z, count, offsetX, offsetY, offsetZ, extra, data);
+    }
+
+    @Override
+    public @NotNull AdvancementProgress getAdvancementProgress(@NotNull Advancement advancement) {
+        return new AdvancementProgress() {
+            @Override
+            public @NotNull Advancement getAdvancement() {
+                return advancement;
+            }
+            @Override
+            public boolean isDone() { return false; }
+            @Override
+            public boolean awardCriteria(@NotNull String criteria) { return false; }
+            @Override
+            public boolean revokeCriteria(@NotNull String criteria) { return false; }
+            @Override
+            public @Nullable Date getDateAwarded(@NotNull String criteria) { return null; }
+            @Override
+            public @NotNull Collection<String> getRemainingCriteria() { return Collections.emptyList(); }
+            @Override
+            public @NotNull Collection<String> getAwardedCriteria() { return Collections.emptyList(); }
+        };
+    }
+
+    @Override
+    public io.papermc.paper.connection.PlayerGameConnection getConnection() {
+        return null;
+    }
+
+    private int deathScreenScore = 0;
 
     @Override
     public int getDeathScreenScore() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getDeathScreenScore'");
+        return this.deathScreenScore;
     }
 
     @Override
     public void setDeathScreenScore(int score) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'setDeathScreenScore'");
+        this.deathScreenScore = score;
     }
 
-    public PlayerGameConnection getConnection() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getConnection'");
-    }}
+    @Override
+    public void sendEntityEffect(@NotNull org.bukkit.EntityEffect effect, @NotNull Entity target) {
+    }
+
+    private long lastActionTime = System.currentTimeMillis();
+
+    @Override
+    public @NotNull java.time.Duration getIdleDuration() {
+        return java.time.Duration.ofMillis(System.currentTimeMillis() - this.lastActionTime);
+    }
+
+    @Override
+    public void resetIdleDuration() {
+        this.lastActionTime = System.currentTimeMillis();
+    }
+
+    @Override
+    public void lookAt(@NotNull Entity entity, @NotNull io.papermc.paper.entity.LookAnchor playerAnchor, @NotNull io.papermc.paper.entity.LookAnchor entityAnchor) {
+        if (entity != null) {
+            lookAt(entity.getLocation().getX(), entity.getLocation().getY(), entity.getLocation().getZ(), playerAnchor);
+        }
+    }
+
+    @Override
+    public void sendOpLevel(byte level) {
+        setOp(level > 0);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> @NotNull T getClientOption(@NotNull com.destroystokyo.paper.ClientOption<T> type) {
+        if (type == com.destroystokyo.paper.ClientOption.SKIN_PARTS) {
+            return (T) com.destroystokyo.paper.SkinParts.allParts();
+        } else if (type == com.destroystokyo.paper.ClientOption.CHAT_COLORS_ENABLED) {
+            return (T) Boolean.TRUE;
+        } else if (type == com.destroystokyo.paper.ClientOption.CHAT_VISIBILITY) {
+            return (T) com.destroystokyo.paper.ClientOption.ChatVisibility.FULL;
+        } else if (type == com.destroystokyo.paper.ClientOption.MAIN_HAND) {
+            return (T) getMainHand();
+        } else if (type == com.destroystokyo.paper.ClientOption.VIEW_DISTANCE) {
+            return (T) Integer.valueOf(getClientViewDistance());
+        } else if (type == com.destroystokyo.paper.ClientOption.LOCALE) {
+            return (T) getLocale();
+        } else if (type == com.destroystokyo.paper.ClientOption.TEXT_FILTERING_ENABLED) {
+            return (T) Boolean.FALSE;
+        } else if (type == com.destroystokyo.paper.ClientOption.ALLOW_SERVER_LISTINGS) {
+            return (T) Boolean.TRUE;
+        }
+        return (T) Boolean.FALSE;
+    }
+
+    @Override
+    public boolean isAllowingServerListings() {
+        return true;
+    }
+
+    @Override
+    public void updateCommands() {
+    }
+
+    @Override
+    public void setRotation(@NotNull io.papermc.paper.math.Angle yaw, @NotNull io.papermc.paper.math.Angle pitch) {
+        setRotation(yaw.degrees(), pitch.degrees());
+    }
+
+    private Entity spectatorTarget = null;
+
+    @Override
+    public @Nullable Entity getSpectatorTarget() {
+        return this.spectatorTarget;
+    }
+
+    @Override
+    public void setSpectatorTarget(@Nullable Entity entity) {
+        this.spectatorTarget = entity;
+    }
+
+    private GameMode previousGameMode = null;
+
+    @Override
+    public @Nullable GameMode getPreviousGameMode() {
+        return this.previousGameMode;
+    }
+
+    @Override
+    public void setGameMode(@NotNull GameMode mode) {
+        this.previousGameMode = getGameMode();
+        super.setGameMode(mode);
+    }
+
+    @Override
+    public void sendLinks(@NotNull ServerLinks links) {
+    }
+
+    @Override
+    public void sendPotionEffectChange(@NotNull org.bukkit.entity.LivingEntity entity, @NotNull org.bukkit.potion.PotionEffect effect) {
+    }
+
+    @Override
+    public void sendPotionEffectChangeRemove(@NotNull LivingEntity entity, @NotNull org.bukkit.potion.PotionEffectType type) {
+    }
+
+    @Override
+    public void sendEquipmentChange(@NotNull LivingEntity entity, @NotNull EquipmentSlot slot, @Nullable ItemStack item) {
+    }
+
+    @Override
+    public void sendEquipmentChange(@NotNull LivingEntity entity, @NotNull Map<EquipmentSlot, @Nullable ItemStack> items) {
+    }
+
+    @Override
+    public boolean breakBlock(@NotNull Block block) {
+        return block.breakNaturally(getInventory().getItemInMainHand());
+    }
+
+    @Override
+    public @NotNull org.bukkit.Input getCurrentInput() {
+        return new org.bukkit.Input() {
+            @Override
+            public boolean isForward() { return false; }
+            @Override
+            public boolean isBackward() { return false; }
+            @Override
+            public boolean isLeft() { return false; }
+            @Override
+            public boolean isRight() { return false; }
+            @Override
+            public boolean isJump() { return false; }
+            @Override
+            public boolean isSneak() { return isSneaking(); }
+            @Override
+            public boolean isSprint() { return isSprinting(); }
+        };
+    }
+
+    @Override
+    public @NotNull Collection<EnderPearl> getEnderPearls() {
+        return Collections.emptyList();
+    }
+
+    private boolean sleepingIgnored = false;
+
+    @Override
+    public boolean isSleepingIgnored() {
+        return this.sleepingIgnored;
+    }
+
+    @Override
+    public void setSleepingIgnored(boolean isSleeping) {
+        this.sleepingIgnored = isSleeping;
+    }
+
+    @Override
+    public void loadData() {
+    }
+
+    @Override
+    public void saveData() {
+    }
+}

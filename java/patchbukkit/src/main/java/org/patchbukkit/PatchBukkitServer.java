@@ -1,16 +1,14 @@
 package org.patchbukkit;
 
 import com.destroystokyo.paper.entity.ai.MobGoals;
+import com.destroystokyo.paper.profile.PlayerProfile;
 import com.google.common.base.Preconditions;
-
 import io.papermc.paper.ban.BanListType;
-import io.papermc.paper.configuration.ServerConfiguration;
 import io.papermc.paper.datapack.DatapackManager;
 import io.papermc.paper.math.Position;
 import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
 import io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler;
 import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
-
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -18,24 +16,31 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.InetAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.patchbukkit.world.PatchBukkitWorld;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.BanList;
 import org.bukkit.GameMode;
 import org.bukkit.Keyed;
@@ -66,9 +71,9 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandException;
 import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityFactory;
 import org.bukkit.entity.Player;
@@ -92,7 +97,6 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicesManager;
 import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.potion.PotionBrewer;
-import org.bukkit.profile.PlayerProfile;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.ScoreboardManager;
@@ -100,15 +104,58 @@ import org.bukkit.structure.StructureManager;
 import org.bukkit.util.CachedServerIcon;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.patchbukkit.ban.PatchBukkitBanList;
+import org.patchbukkit.PatchBukkitBlockData;
+import org.patchbukkit.boss.PatchBukkitBossBar;
+import org.patchbukkit.boss.PatchBukkitKeyedBossBar;
 import org.patchbukkit.command.PatchBukkitCommandMap;
 import org.patchbukkit.command.PatchBukkitConsoleCommandSender;
+import org.patchbukkit.datapack.PatchBukkitDatapackManager;
+import org.patchbukkit.entity.PatchBukkitEntityFactory;
+import org.patchbukkit.entity.PatchBukkitMobGoals;
+import org.patchbukkit.entity.PatchBukkitOfflinePlayer;
+import org.patchbukkit.entity.PatchBukkitPlayer;
 import org.patchbukkit.events.PatchBukkitEventManager;
+import org.patchbukkit.help.PatchBukkitHelpMap;
+import org.patchbukkit.inventory.PatchBukkitInventory;
+import org.patchbukkit.inventory.PatchBukkitItemFactory;
+import org.patchbukkit.inventory.PatchBukkitMerchant;
+import org.patchbukkit.map.PatchBukkitMapView;
+import org.patchbukkit.messaging.PatchBukkitMessenger;
+import org.patchbukkit.potion.PatchBukkitPotionBrewer;
+import org.patchbukkit.profile.PatchBukkitPlayerProfile;
+import org.patchbukkit.scheduler.PatchBukkitAsyncScheduler;
+import org.patchbukkit.scheduler.PatchBukkitGlobalRegionScheduler;
+import org.patchbukkit.scheduler.PatchBukkitRegionScheduler;
 import org.patchbukkit.scheduler.PatchBukkitScheduler;
+import org.patchbukkit.scoreboard.PatchBukkitScoreboardManager;
+import org.patchbukkit.structure.PatchBukkitStructureManager;
+import org.patchbukkit.tick.PatchBukkitServerTickManager;
 import org.patchbukkit.versioning.Versioning;
-
+import org.patchbukkit.PatchBukkitLegacy;
+import org.patchbukkit.world.PatchBukkitWorld;
+import org.patchbukkit.world.PatchBukkitWorldBorder;
 import patchbukkit.bridge.NativeBridgeFfi;
+import patchbukkit.common.EmptyRequest;
 import patchbukkit.log.LogLevel;
 import patchbukkit.log.SendLogRequest;
+import patchbukkit.server.CreateWorldRequest;
+import patchbukkit.server.GetOperatorsResponse;
+import patchbukkit.server.GetWhitelistResponse;
+import patchbukkit.server.OperatorEntryProto;
+import patchbukkit.server.ServerInfoResponse;
+import patchbukkit.server.ServerTickInfoResponse;
+import patchbukkit.server.SetOperatorRequest;
+import patchbukkit.server.SetServerDefaultGamemodeRequest;
+import patchbukkit.server.SetServerIdleTimeoutRequest;
+import patchbukkit.server.SetServerMaxPlayersRequest;
+import patchbukkit.server.SetServerMotdRequest;
+import patchbukkit.server.SetServerWhitelistEnforcedRequest;
+import patchbukkit.server.SetServerWhitelistRequest;
+import patchbukkit.server.SetWhitelistPlayerRequest;
+import patchbukkit.server.ShutdownServerRequest;
+import patchbukkit.server.UnloadWorldRequest;
+import patchbukkit.server.WhitelistEntryProto;
 
 @SuppressWarnings({ "deprecation", "removal", "unchecked" })
 public class PatchBukkitServer implements Server {
@@ -121,6 +168,7 @@ public class PatchBukkitServer implements Server {
             name = io.papermc.paper.ServerBuildInfo.buildInfo().brandName();
         } catch (Throwable ignored) {}
         this.serverName = name;
+        syncServerInfo();
     }
 
     public static PatchBukkitServer getInstance() {
@@ -159,16 +207,154 @@ public class PatchBukkitServer implements Server {
     public PatchBukkitPluginManager pluginManager = new PatchBukkitPluginManager(this);
     public ServicesManager servicesManager = new PatchBukkitServicesManager();
 
+    private final Map<UUID, Player> onlinePlayers = new ConcurrentHashMap<>();
+    private final Map<String, Player> onlinePlayersByName = new ConcurrentHashMap<>();
 
-    private final Map<UUID, Player> onlinePlayers = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, Player> onlinePlayersByName = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Set<UUID> operatorUuids = Collections.synchronizedSet(new HashSet<>());
+    private final Set<String> operatorNames = Collections.synchronizedSet(new HashSet<>());
 
-    private final Set<UUID> operatorUuids = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
-    private final Set<String> operatorNames = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private final ServerTickManager tickManager = new PatchBukkitServerTickManager();
+    private final PatchBukkitBanList<String> nameBanList = new PatchBukkitBanList<>("NAME");
+    private final PatchBukkitBanList<InetAddress> ipBanList = new PatchBukkitBanList<>("IP");
+    private final PatchBukkitBanList<PlayerProfile> profileBanList = new PatchBukkitBanList<>("PROFILE");
+    private final ScoreboardManager scoreboardManager = new PatchBukkitScoreboardManager();
+    private final DatapackManager datapackManager = new PatchBukkitDatapackManager();
+    private final StructureManager structureManager = new PatchBukkitStructureManager();
+    private final PotionBrewer potionBrewer = PatchBukkitPotionBrewer.INSTANCE;
+    private final MobGoals mobGoals = PatchBukkitMobGoals.INSTANCE;
+    private final EntityFactory entityFactory = PatchBukkitEntityFactory.INSTANCE;
+    private final RegionScheduler regionScheduler = new PatchBukkitRegionScheduler();
+    private final AsyncScheduler asyncScheduler = new PatchBukkitAsyncScheduler();
+    private final GlobalRegionScheduler globalRegionScheduler = new PatchBukkitGlobalRegionScheduler();
+
+    private final Map<NamespacedKey, KeyedBossBar> bossBars = new ConcurrentHashMap<>();
+    private final Map<Integer, MapView> maps = new ConcurrentHashMap<>();
+    private final AtomicInteger mapCounter = new AtomicInteger(0);
+    private final List<Recipe> recipes = new CopyOnWriteArrayList<>();
+
+    private int spawnRadius = 16;
+    private int idleTimeout = 0;
+    private int pauseWhenEmptyTime = 60;
+    private GameMode defaultGameMode = GameMode.SURVIVAL;
+    private boolean whitelistEnforced = false;
+    private boolean whitelistEnabled = false;
+    private String motd = "A PatchBukkit Server";
+    private int maxPlayers = 20;
+    private int port = 25565;
+    private String ip = "127.0.0.1";
+    private int viewDistance = 10;
+    private int simulationDistance = 10;
+    private boolean allowFlight = true;
+    private boolean allowNether = true;
+    private boolean allowEnd = true;
+    private boolean onlineMode = true;
+    private boolean hardcore = false;
+    private boolean pvp = true;
+    private String shutdownMessage = "Server closed";
+    private boolean isStopping = false;
+
+    private final Spigot spigot = new Spigot() {
+        @Override
+        public void restart() {
+            PatchBukkitServer.this.restart();
+        }
+    };
+
+    private final ServerLinks serverLinks = new ServerLinks() {
+        private final List<ServerLink> links = new ArrayList<>();
+
+        @Override
+        public @Nullable ServerLink getLink(@NotNull Type type) {
+            return null;
+        }
+
+        @Override
+        public @NotNull List<ServerLink> getLinks() {
+            return Collections.unmodifiableList(this.links);
+        }
+
+        @Override
+        public @NotNull ServerLink setLink(@NotNull Type type, @NotNull URI uri) {
+            return addLink(type.name(), uri);
+        }
+
+        @Override
+        public @NotNull ServerLink addLink(@NotNull Type type, @NotNull URI uri) {
+            return addLink(type.name(), uri);
+        }
+
+        @Override
+        public @NotNull ServerLink addLink(@NotNull Component component, @NotNull URI uri) {
+            return addLink(PlainTextComponentSerializer.plainText().serialize(component), uri);
+        }
+
+        @Override
+        public @NotNull ServerLink addLink(@NotNull String string, @NotNull URI uri) {
+            ServerLink link = new ServerLink() {
+                @Override public @Nullable Type getType() { return null; }
+                @Override public @NotNull Component displayName() { return Component.text(string); }
+                @Override public @NotNull String getDisplayName() { return string; }
+                @Override public @NotNull URI getUrl() { return uri; }
+            };
+            this.links.add(link);
+            return link;
+        }
+
+        @Override
+        public boolean removeLink(@NotNull ServerLink serverLink) {
+            return this.links.remove(serverLink);
+        }
+
+        @Override
+        public @NotNull ServerLinks copy() {
+            return this;
+        }
+    };
+
+    public void syncServerInfo() {
+        try {
+            ServerInfoResponse info = NativeBridgeFfi.getServerInfo(EmptyRequest.getDefaultInstance());
+            if (info != null) {
+                this.motd = info.getMotd();
+                this.ip = info.getIp();
+                this.port = info.getPort();
+                this.maxPlayers = info.getMaxPlayers();
+                this.viewDistance = info.getViewDistance();
+                this.simulationDistance = info.getSimulationDistance();
+                this.allowFlight = info.getAllowFlight();
+                this.allowNether = info.getAllowNether();
+                this.allowEnd = info.getAllowEnd();
+                this.onlineMode = info.getOnlineMode();
+                this.hardcore = info.getHardcore();
+                this.pvp = info.getPvp();
+                this.whitelistEnabled = info.getHasWhitelist();
+                this.whitelistEnforced = info.getIsWhitelistEnforced();
+                this.idleTimeout = info.getIdleTimeout();
+                try {
+                    this.defaultGameMode = GameMode.valueOf(info.getDefaultGamemode().toUpperCase());
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+    }
 
     public boolean isOp(UUID uuid, String name) {
         if (uuid != null && operatorUuids.contains(uuid)) return true;
         if (name != null && operatorNames.contains(name.toLowerCase())) return true;
+        try {
+            GetOperatorsResponse ops = NativeBridgeFfi.getOperators(EmptyRequest.getDefaultInstance());
+            if (ops != null) {
+                for (OperatorEntryProto op : ops.getOperatorsList()) {
+                    if (uuid != null && op.hasUuid() && op.getUuid().getValue().equalsIgnoreCase(uuid.toString())) {
+                        operatorUuids.add(uuid);
+                        return true;
+                    }
+                    if (name != null && op.getName().equalsIgnoreCase(name)) {
+                        operatorNames.add(name.toLowerCase());
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return false;
     }
 
@@ -179,6 +365,18 @@ public class PatchBukkitServer implements Server {
         if (name != null) {
             if (value) operatorNames.add(name.toLowerCase()); else operatorNames.remove(name.toLowerCase());
         }
+        try {
+            var req = SetOperatorRequest.newBuilder()
+                .setIsOp(value)
+                .setLevel(4);
+            if (uuid != null) {
+                req.setUuid(patchbukkit.common.UUID.newBuilder().setValue(uuid.toString()).build());
+            }
+            if (name != null) {
+                req.setName(name);
+            }
+            NativeBridgeFfi.setOperator(req.build());
+        } catch (Throwable ignored) {}
     }
 
     private static final PrintStream ORIGINAL_OUT = System.out;
@@ -207,7 +405,7 @@ public class PatchBukkitServer implements Server {
         for (java.util.logging.Handler h : root.getHandlers()) {
             root.removeHandler(h);
         }
-        root.setLevel(Level.ALL); // accept everything, let your Rust side filter
+        root.setLevel(Level.ALL);
         root.addHandler(new java.util.logging.Handler() {
             @Override
             public void publish(java.util.logging.LogRecord record) {
@@ -343,9 +541,6 @@ public class PatchBukkitServer implements Server {
         }
     }
 
-    /**
-     * Called from Rust when a player joins the Pumpkin server
-     */
     public void registerPlayer(Player player) {
         this.onlinePlayers.put(player.getUniqueId(), player);
         this.onlinePlayersByName.put(player.getName().toLowerCase(), player);
@@ -354,7 +549,7 @@ public class PatchBukkitServer implements Server {
     public static void registerPlayer(String uuidStr, String name, boolean isOp) {
         try {
             UUID uuid = UUID.fromString(uuidStr);
-            org.patchbukkit.entity.PatchBukkitPlayer player = new org.patchbukkit.entity.PatchBukkitPlayer(uuid, name);
+            PatchBukkitPlayer player = new PatchBukkitPlayer(uuid, name);
             if (isOp) {
                 player.setOp(true);
             }
@@ -370,9 +565,6 @@ public class PatchBukkitServer implements Server {
         return this.pluginManager.getEventManager();
     }
 
-    /**
-     * Called from Rust when a player leaves
-     */
     public void unregisterPlayer(UUID uuid) {
         Player p = this.onlinePlayers.remove(uuid);
         if (p != null) {
@@ -384,8 +576,8 @@ public class PatchBukkitServer implements Server {
         this.pluginManager.registerPlugin(plugin);
     }
 
-    private final Messenger messenger = new org.patchbukkit.messaging.PatchBukkitMessenger();
-    private final HelpMap helpMap = new org.patchbukkit.help.PatchBukkitHelpMap();
+    private final Messenger messenger = new PatchBukkitMessenger();
+    private final HelpMap helpMap = new PatchBukkitHelpMap();
     private File pluginsFolder = new File("plugins");
 
     private static void validateChannel(String channel) {
@@ -416,11 +608,11 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull Set<String> getListeningPluginChannels() {
-        Set<String> channels = new java.util.HashSet<>();
+        Set<String> channels = new HashSet<>();
         for (Player player : getOnlinePlayers()) {
             channels.addAll(player.getListeningPluginChannels());
         }
-        return java.util.Collections.unmodifiableSet(channels);
+        return Collections.unmodifiableSet(channels);
     }
 
     @Override
@@ -467,31 +659,37 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public int getMaxPlayers() {
-        return 20;
+        return this.maxPlayers;
     }
 
     @Override
     public void setMaxPlayers(int maxPlayers) {
+        this.maxPlayers = maxPlayers;
+        try {
+            NativeBridgeFfi.setServerMaxPlayers(SetServerMaxPlayersRequest.newBuilder()
+                .setMaxPlayers(maxPlayers)
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public int getPort() {
-        return 25565;
+        return this.port;
     }
 
     @Override
     public int getViewDistance() {
-        return 10;
+        return this.viewDistance;
     }
 
     @Override
     public int getSimulationDistance() {
-        return 10;
+        return this.simulationDistance;
     }
 
     @Override
     public @NotNull String getIp() {
-        return "127.0.0.1";
+        return this.ip;
     }
 
     @Override
@@ -501,186 +699,140 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public boolean getGenerateStructures() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getGenerateStructures'"
-        );
+        return true;
     }
 
     @Override
     public int getMaxWorldSize() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMaxWorldSize'"
-        );
+        return 29999984;
     }
 
     @Override
     public boolean getAllowEnd() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAllowEnd'"
-        );
+        return this.allowEnd;
     }
 
     @Override
     public boolean getAllowNether() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAllowNether'"
-        );
+        return this.allowNether;
     }
 
     @Override
     public boolean isLoggingIPs() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isLoggingIPs'"
-        );
+        return true;
     }
 
     @Override
     public @NotNull List<String> getInitialEnabledPacks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getInitialEnabledPacks'"
-        );
+        return List.of("vanilla");
     }
 
     @Override
     public @NotNull List<String> getInitialDisabledPacks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getInitialDisabledPacks'"
-        );
+        return List.of();
     }
 
     @Override
     public @NotNull ServerTickManager getServerTickManager() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getServerTickManager'"
-        );
+        return this.tickManager;
     }
 
     @Override
     public @Nullable ResourcePack getServerResourcePack() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getServerResourcePack'"
-        );
+        return null;
     }
 
     @Override
     public @NotNull String getResourcePack() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getResourcePack'"
-        );
+        return "";
     }
 
     @Override
     public @NotNull String getResourcePackHash() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getResourcePackHash'"
-        );
+        return "";
     }
 
     @Override
     public @NotNull String getResourcePackPrompt() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getResourcePackPrompt'"
-        );
+        return "";
     }
 
     @Override
     public boolean isResourcePackRequired() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isResourcePackRequired'"
-        );
+        return false;
     }
 
     @Override
     public boolean hasWhitelist() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'hasWhitelist'"
-        );
+        return this.whitelistEnabled;
     }
 
     @Override
     public void setWhitelist(boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setWhitelist'"
-        );
+        this.whitelistEnabled = value;
+        try {
+            NativeBridgeFfi.setServerWhitelist(SetServerWhitelistRequest.newBuilder()
+                .setEnabled(value)
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public boolean isWhitelistEnforced() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isWhitelistEnforced'"
-        );
+        return this.whitelistEnforced;
     }
 
     @Override
     public void setWhitelistEnforced(boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setWhitelistEnforced'"
-        );
+        this.whitelistEnforced = value;
+        try {
+            NativeBridgeFfi.setServerWhitelistEnforced(SetServerWhitelistEnforcedRequest.newBuilder()
+                .setEnforced(value)
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public @NotNull Set<OfflinePlayer> getWhitelistedPlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWhitelistedPlayers'"
-        );
+        Set<OfflinePlayer> list = new HashSet<>();
+        try {
+            GetWhitelistResponse res = NativeBridgeFfi.getWhitelist(EmptyRequest.getDefaultInstance());
+            if (res != null) {
+                for (WhitelistEntryProto entry : res.getPlayersList()) {
+                    if (entry.hasUuid()) {
+                        list.add(getOfflinePlayer(UUID.fromString(entry.getUuid().getValue())));
+                    } else {
+                        list.add(getOfflinePlayer(entry.getName()));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return list;
     }
 
     @Override
     public void reloadWhitelist() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'reloadWhitelist'"
-        );
+        syncServerInfo();
     }
 
     @Override
     public @NotNull String getUpdateFolder() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getUpdateFolder'"
-        );
+        return "update";
     }
 
     @Override
     public @NotNull File getUpdateFolderFile() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getUpdateFolderFile'"
-        );
+        return new File("update");
     }
 
     @Override
     public long getConnectionThrottle() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getConnectionThrottle'"
-        );
+        return 0;
     }
 
     @Override
     public int getTicksPerSpawns(@NotNull SpawnCategory spawnCategory) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getTicksPerSpawns'"
-        );
+        return 1;
     }
 
     @Override
@@ -695,23 +847,26 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull List<Player> matchPlayer(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'matchPlayer'"
-        );
+        List<Player> matches = new ArrayList<>();
+        String query = name.toLowerCase();
+        for (Player p : getOnlinePlayers()) {
+            if (p.getName().toLowerCase().startsWith(query)) {
+                matches.add(p);
+            }
+        }
+        return matches;
     }
 
-   @Override
+    @Override
     public @Nullable Player getPlayer(@NotNull UUID id) {
         return onlinePlayers.get(id);
     }
 
     @Override
     public @Nullable UUID getPlayerUniqueId(@NotNull String playerName) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPlayerUniqueId'"
-        );
+        Player player = getPlayer(playerName);
+        if (player != null) return player.getUniqueId();
+        return getOfflinePlayer(playerName).getUniqueId();
     }
 
     @Override
@@ -731,7 +886,7 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull List<World> getWorlds() {
-        var response = NativeBridgeFfi.getWorlds(patchbukkit.common.EmptyRequest.newBuilder().build());
+        var response = NativeBridgeFfi.getWorlds(EmptyRequest.getDefaultInstance());
         if (response == null) return List.of();
         List<World> list = new ArrayList<>();
         for (patchbukkit.common.UUID u : response.getWorldUuidsList()) {
@@ -742,34 +897,50 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public boolean isTickingWorlds() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isTickingWorlds'"
-        );
+        return true;
     }
 
     @Override
     public @Nullable World createWorld(@NotNull WorldCreator creator) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createWorld'"
-        );
+        Preconditions.checkArgument(creator != null, "WorldCreator cannot be null");
+        try {
+            var dim = switch (creator.environment()) {
+                case NETHER -> "minecraft:the_nether";
+                case THE_END -> "minecraft:the_end";
+                default -> "minecraft:overworld";
+            };
+            var res = NativeBridgeFfi.createWorld(CreateWorldRequest.newBuilder()
+                .setName(creator.name())
+                .setDimension(dim)
+                .setSeed(creator.seed())
+                .build());
+            if (res != null && res.hasWorldUuid()) {
+                return PatchBukkitWorld.getOrCreate(res.getWorldUuid().getValue());
+            }
+        } catch (Throwable ignored) {}
+        return getWorld(creator.name());
     }
 
     @Override
     public boolean unloadWorld(@NotNull String name, boolean save) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'unloadWorld'"
-        );
+        World world = getWorld(name);
+        if (world != null) {
+            return unloadWorld(world, save);
+        }
+        return false;
     }
 
     @Override
     public boolean unloadWorld(@NotNull World world, boolean save) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'unloadWorld'"
-        );
+        try {
+            var res = NativeBridgeFfi.unloadWorld(UnloadWorldRequest.newBuilder()
+                .setWorldUuid(patchbukkit.common.UUID.newBuilder().setValue(world.getUID().toString()).build())
+                .setWorldName(world.getName())
+                .setSave(save)
+                .build());
+            return res != null && res.getSuccess();
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     public @NotNull World getRespawnWorld() {
@@ -777,16 +948,10 @@ public class PatchBukkitServer implements Server {
         if (!worlds.isEmpty()) {
             return worlds.get(0);
         }
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getRespawnWorld'"
-        );
+        return PatchBukkitWorld.getOrCreate(UUID.randomUUID().toString());
     }
 
     public void setRespawnWorld(@NotNull World world) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setRespawnWorld'"
-        );
     }
 
     @Override
@@ -821,23 +986,20 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull WorldBorder createWorldBorder() {
-        return new org.patchbukkit.world.PatchBukkitWorldBorder(null);
+        return new PatchBukkitWorldBorder(null);
     }
 
     @Override
     public @Nullable MapView getMap(int id) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMap'"
-        );
+        return this.maps.get(id);
     }
 
     @Override
     public @NotNull MapView createMap(@NotNull World world) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createMap'"
-        );
+        int id = mapCounter.incrementAndGet();
+        MapView map = new PatchBukkitMapView(id, world);
+        this.maps.put(id, map);
+        return map;
     }
 
     @Override
@@ -848,10 +1010,7 @@ public class PatchBukkitServer implements Server {
         int radius,
         boolean findUnexplored
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createExplorerMap'"
-        );
+        return new ItemStack(Material.FILLED_MAP);
     }
 
     @Override
@@ -863,18 +1022,12 @@ public class PatchBukkitServer implements Server {
         int radius,
         boolean findUnexplored
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createExplorerMap'"
-        );
+        return new ItemStack(Material.FILLED_MAP);
     }
 
     @Override
     public void reload() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'reload'"
-        );
+        reloadData();
     }
 
     public int getReloadCount() {
@@ -883,45 +1036,33 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public void reloadData() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'reloadData'"
-        );
+        syncServerInfo();
     }
 
     @Override
     public void updateResources() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'updateResources'"
-        );
     }
 
     @Override
     public void updateRecipes() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'updateRecipes'"
-        );
     }
 
     @Override
     public @NotNull Logger getLogger() {
-        return this.logger;
+        return logger;
     }
 
     @Override
     public @Nullable PluginCommand getPluginCommand(@NotNull String name) {
         Command cmd = this.commandMap.getCommand(name);
-    return (cmd instanceof PluginCommand) ? (PluginCommand) cmd : null;
+        return (cmd instanceof PluginCommand) ? (PluginCommand) cmd : null;
     }
 
     @Override
     public void savePlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'savePlayers'"
-        );
+        try {
+            NativeBridgeFfi.saveAllWorlds(EmptyRequest.getDefaultInstance());
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -937,26 +1078,32 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public boolean addRecipe(@Nullable Recipe recipe, boolean resendRecipes) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'addRecipe'"
-        );
+        if (recipe != null) {
+            this.recipes.add(recipe);
+            return true;
+        }
+        return false;
     }
 
     @Override
     public @NotNull List<Recipe> getRecipesFor(@NotNull ItemStack result) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getRecipesFor'"
-        );
+        List<Recipe> matches = new ArrayList<>();
+        for (Recipe r : this.recipes) {
+            if (r.getResult().isSimilar(result)) {
+                matches.add(r);
+            }
+        }
+        return matches;
     }
 
     @Override
     public @Nullable Recipe getRecipe(@NotNull NamespacedKey recipeKey) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getRecipe'"
-        );
+        for (Recipe r : this.recipes) {
+            if (r instanceof Keyed keyed && keyed.getKey().equals(recipeKey)) {
+                return r;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -964,10 +1111,7 @@ public class PatchBukkitServer implements Server {
         @NotNull ItemStack@NotNull [] craftingMatrix,
         @NotNull World world
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getCraftingRecipe'"
-        );
+        return null;
     }
 
     @Override
@@ -976,10 +1120,7 @@ public class PatchBukkitServer implements Server {
         @NotNull World world,
         @NotNull Player player
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'craftItemResult'"
-        );
+        return craftItemResult(craftingMatrix, world);
     }
 
     @Override
@@ -987,34 +1128,26 @@ public class PatchBukkitServer implements Server {
         @NotNull ItemStack@NotNull [] craftingMatrix,
         @NotNull World world
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'craftItemResult'"
-        );
+        return new ItemCraftResult() {
+            @Override public @NotNull ItemStack getResult() { return ItemStack.empty(); }
+            @Override public @NotNull ItemStack[] getResultingMatrix() { return craftingMatrix; }
+            @Override public @NotNull List<ItemStack> getOverflowItems() { return Collections.emptyList(); }
+        };
     }
 
     @Override
     public @NotNull Iterator<Recipe> recipeIterator() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'recipeIterator'"
-        );
+        return this.recipes.iterator();
     }
 
     @Override
     public void clearRecipes() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'clearRecipes'"
-        );
+        this.recipes.clear();
     }
 
     @Override
     public void resetRecipes() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'resetRecipes'"
-        );
+        this.recipes.clear();
     }
 
     @Override
@@ -1022,255 +1155,228 @@ public class PatchBukkitServer implements Server {
         @NotNull NamespacedKey key,
         boolean resendRecipes
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'removeRecipe'"
-        );
+        return this.recipes.removeIf(r -> r instanceof Keyed keyed && keyed.getKey().equals(key));
     }
 
     @Override
     public @NotNull Map<String, String[]> getCommandAliases() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getCommandAliases'"
-        );
+        return Collections.emptyMap();
     }
 
     @Override
     public int getSpawnRadius() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getSpawnRadius'"
-        );
+        return this.spawnRadius;
     }
 
     @Override
     public void setSpawnRadius(int value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setSpawnRadius'"
-        );
-    }
-
-    @Override
-    public boolean isEnforcingSecureProfiles() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isEnforcingSecureProfiles'"
-        );
-    }
-
-    @Override
-    public boolean isAcceptingTransfers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isAcceptingTransfers'"
-        );
+        this.spawnRadius = value;
     }
 
     @Override
     public boolean getHideOnlinePlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getHideOnlinePlayers'"
-        );
+        return false;
     }
 
     @Override
     public boolean getOnlineMode() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOnlineMode'"
-        );
-    }
-
-    public @NotNull ServerConfiguration getServerConfig() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getServerConfig'"
-        );
+        return this.onlineMode;
     }
 
     @Override
     public boolean getAllowFlight() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAllowFlight'"
-        );
+        return this.allowFlight;
     }
 
     @Override
     public boolean isHardcore() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isHardcore'"
-        );
+        return this.hardcore;
+    }
+
+    @Override
+    public boolean isAcceptingTransfers() {
+        return true;
     }
 
     @Override
     public void shutdown() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'shutdown'"
-        );
+        this.isStopping = true;
+        try {
+            NativeBridgeFfi.shutdownServer(ShutdownServerRequest.newBuilder()
+                .setSave(true)
+                .setMessage(this.shutdownMessage)
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
-    public int broadcast(
-        @NotNull Component message,
-        @NotNull String permission
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'broadcast'"
-        );
+    public int broadcast(@NotNull Component message, @NotNull String permission) {
+        int count = 0;
+        for (Player player : getOnlinePlayers()) {
+            if (permission.isEmpty() || player.hasPermission(permission)) {
+                player.sendMessage(message);
+                count++;
+            }
+        }
+        ConsoleCommandSender console = getConsoleSender();
+        if (permission.isEmpty() || console.hasPermission(permission)) {
+            console.sendMessage(message);
+            count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int broadcast(@NotNull String message, @NotNull String permission) {
+        return broadcast(LegacyComponentSerializer.legacySection().deserialize(message), permission);
+    }
+
+    @Override
+    public int broadcastMessage(@NotNull String message) {
+        return broadcast(message, Server.BROADCAST_CHANNEL_USERS);
     }
 
     @Override
     public @NotNull OfflinePlayer getOfflinePlayer(@NotNull String name) {
-        Player online = getPlayer(name);
-        if (online != null) return online;
-        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(null, name);
-    }
-
-    @Override
-    public @Nullable OfflinePlayer getOfflinePlayerIfCached(@NotNull String name) {
-        Player online = getPlayer(name);
-        if (online != null) return online;
-        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(null, name);
+        Player player = getPlayerExact(name);
+        if (player != null) return player;
+        return new PatchBukkitOfflinePlayer(name);
     }
 
     @Override
     public @NotNull OfflinePlayer getOfflinePlayer(@NotNull UUID id) {
-        Player online = getPlayer(id);
-        if (online != null) return online;
-        return new org.patchbukkit.entity.PatchBukkitOfflinePlayer(id, null);
+        Player player = getPlayer(id);
+        if (player != null) return player;
+        return new PatchBukkitOfflinePlayer(id);
     }
 
     @Override
-    public @NotNull PlayerProfile createPlayerProfile(
-        @Nullable UUID uniqueId,
+    public @Nullable OfflinePlayer getOfflinePlayerIfCached(@NotNull String name) {
+        return getOfflinePlayer(name);
+    }
+
+    @Override
+    public boolean isEnforcingSecureProfiles() {
+        return false;
+    }
+
+    @Override
+    public org.bukkit.profile.@NotNull PlayerProfile createPlayerProfile(@NotNull UUID id) {
+        return new PatchBukkitPlayerProfile(id, null);
+    }
+
+    @Override
+    public org.bukkit.profile.@NotNull PlayerProfile createPlayerProfile(@NotNull String name) {
+        return new PatchBukkitPlayerProfile(null, name);
+    }
+
+    @Override
+    public org.bukkit.profile.@NotNull PlayerProfile createPlayerProfile(
+        @Nullable UUID id,
         @Nullable String name
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createPlayerProfile'"
-        );
-    }
-
-    @Override
-    public @NotNull PlayerProfile createPlayerProfile(@NotNull UUID uniqueId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createPlayerProfile'"
-        );
-    }
-
-    @Override
-    public @NotNull PlayerProfile createPlayerProfile(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createPlayerProfile'"
-        );
+        return new PatchBukkitPlayerProfile(id, name);
     }
 
     @Override
     public @NotNull Set<String> getIPBans() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getIPBans'"
-        );
+        Set<String> set = new HashSet<>();
+        for (org.bukkit.BanEntry entry : this.ipBanList.getBanEntries()) {
+            set.add(entry.getTarget());
+        }
+        return set;
     }
 
     @Override
     public void banIP(@NotNull String address) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'banIP'");
+        this.ipBanList.addBan(address, "Banned by operator", (Date) null, "Server");
     }
 
     @Override
     public void unbanIP(@NotNull String address) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'unbanIP'"
-        );
+        this.ipBanList.pardon(address);
     }
 
     @Override
     public void banIP(@NotNull InetAddress address) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'banIP'");
+        this.ipBanList.addBan(address, "Banned by operator", (Date) null, "Server");
     }
 
     @Override
     public void unbanIP(@NotNull InetAddress address) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'unbanIP'"
-        );
+        this.ipBanList.pardon(address);
     }
 
     @Override
     public @NotNull Set<OfflinePlayer> getBannedPlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBannedPlayers'"
-        );
+        Set<OfflinePlayer> list = new HashSet<>();
+        for (org.bukkit.BanEntry entry : this.nameBanList.getBanEntries()) {
+            list.add(getOfflinePlayer(entry.getTarget()));
+        }
+        return list;
     }
 
     @Override
     public <T extends BanList<?>> @NotNull T getBanList(
         org.bukkit.BanList.@NotNull Type type
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBanList'"
-        );
+        return switch (type) {
+            case IP -> (T) this.ipBanList;
+            case PROFILE -> (T) this.profileBanList;
+            default -> (T) this.nameBanList;
+        };
     }
 
     @Override
     public <B extends BanList<E>, E> @NotNull B getBanList(
         @NotNull BanListType<B> type
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBanList'"
-        );
+        if (type == BanListType.IP) return (B) this.ipBanList;
+        if (type == BanListType.PROFILE) return (B) this.profileBanList;
+        return (B) this.nameBanList;
     }
 
     @Override
     public @NotNull Set<OfflinePlayer> getOperators() {
-        Set<OfflinePlayer> ops = new java.util.HashSet<>();
+        Set<OfflinePlayer> ops = new HashSet<>();
         for (UUID uuid : operatorUuids) {
             ops.add(getOfflinePlayer(uuid));
         }
         for (String name : operatorNames) {
             ops.add(getOfflinePlayer(name));
         }
+        try {
+            GetOperatorsResponse res = NativeBridgeFfi.getOperators(EmptyRequest.getDefaultInstance());
+            if (res != null) {
+                for (OperatorEntryProto op : res.getOperatorsList()) {
+                    if (op.hasUuid()) {
+                        ops.add(getOfflinePlayer(UUID.fromString(op.getUuid().getValue())));
+                    } else {
+                        ops.add(getOfflinePlayer(op.getName()));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return ops;
     }
 
     @Override
     public @NotNull GameMode getDefaultGameMode() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getDefaultGameMode'"
-        );
+        return this.defaultGameMode;
     }
 
     @Override
     public void setDefaultGameMode(@NotNull GameMode mode) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setDefaultGameMode'"
-        );
+        this.defaultGameMode = mode;
+        try {
+            NativeBridgeFfi.setServerDefaultGamemode(SetServerDefaultGamemodeRequest.newBuilder()
+                .setGamemode(mode.name())
+                .build());
+        } catch (Throwable ignored) {}
     }
 
     public boolean forcesDefaultGameMode() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'forcesDefaultGameMode'"
-        );
+        return false;
     }
 
     @Override
@@ -1282,26 +1388,30 @@ public class PatchBukkitServer implements Server {
     public @NotNull CommandSender createCommandSender(
         @NotNull Consumer<? super Component> feedback
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createCommandSender'"
-        );
+        return new PatchBukkitConsoleCommandSender() {
+            @Override
+            public void sendMessage(@NotNull Component message) {
+                feedback.accept(message);
+            }
+            @Override
+            public void sendMessage(@NotNull String message) {
+                feedback.accept(LegacyComponentSerializer.legacySection().deserialize(message));
+            }
+        };
     }
 
     @Override
     public @NotNull File getWorldContainer() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getWorldContainer'"
-        );
+        return new File(".");
     }
 
     @Override
     public @NotNull OfflinePlayer@NotNull [] getOfflinePlayers() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getOfflinePlayers'"
-        );
+        Set<OfflinePlayer> players = new HashSet<>(getOnlinePlayers());
+        players.addAll(getOperators());
+        players.addAll(getWhitelistedPlayers());
+        players.addAll(getBannedPlayers());
+        return players.toArray(new OfflinePlayer[0]);
     }
 
     @Override
@@ -1319,10 +1429,7 @@ public class PatchBukkitServer implements Server {
         @Nullable InventoryHolder owner,
         @NotNull InventoryType type
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, type);
     }
 
     @Override
@@ -1331,10 +1438,7 @@ public class PatchBukkitServer implements Server {
         @NotNull InventoryType type,
         @NotNull Component title
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, type, title);
     }
 
     @Override
@@ -1343,10 +1447,7 @@ public class PatchBukkitServer implements Server {
         @NotNull InventoryType type,
         @NotNull String title
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, type, title);
     }
 
     @Override
@@ -1354,10 +1455,7 @@ public class PatchBukkitServer implements Server {
         @Nullable InventoryHolder owner,
         int size
     ) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, size);
     }
 
     @Override
@@ -1366,10 +1464,7 @@ public class PatchBukkitServer implements Server {
         int size,
         @NotNull Component title
     ) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, size, title);
     }
 
     @Override
@@ -1378,50 +1473,41 @@ public class PatchBukkitServer implements Server {
         int size,
         @NotNull String title
     ) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createInventory'"
-        );
+        return new PatchBukkitInventory(owner, size, title);
     }
 
     @Override
     public @NotNull Merchant createMerchant(@Nullable Component title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createMerchant'"
-        );
+        return new PatchBukkitMerchant(title);
     }
 
     @Override
     public @NotNull Merchant createMerchant(@Nullable String title) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createMerchant'"
-        );
+        return new PatchBukkitMerchant(title != null ? Component.text(title) : null);
     }
 
     @Override
     public int getMaxChainedNeighborUpdates() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMaxChainedNeighborUpdates'"
-        );
+        return 1000000;
     }
 
     @Override
     public @NotNull Merchant createMerchant() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createMerchant'"
-        );
+        return new PatchBukkitMerchant(null);
     }
 
     @Override
     public int getSpawnLimit(@NotNull SpawnCategory spawnCategory) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getSpawnLimit'"
-        );
+        return switch (spawnCategory) {
+            case MONSTER -> 70;
+            case ANIMAL -> 10;
+            case WATER_ANIMAL -> 5;
+            case WATER_AMBIENT -> 20;
+            case WATER_UNDERGROUND_CREATURE -> 5;
+            case AMBIENT -> 15;
+            case AXOLOTL -> 5;
+            default -> 10;
+        };
     }
 
     @Override
@@ -1431,54 +1517,43 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull Component motd() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'motd'");
+        return Component.text(this.motd);
     }
 
     @Override
     public void motd(@NotNull Component motd) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'motd'");
+        this.motd = PlainTextComponentSerializer.plainText().serialize(motd);
+        try {
+            NativeBridgeFfi.setServerMotd(SetServerMotdRequest.newBuilder().setMotd(this.motd).build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public @Nullable Component shutdownMessage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'shutdownMessage'"
-        );
+        return Component.text(this.shutdownMessage);
     }
 
     @Override
     public @NotNull String getMotd() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMotd'"
-        );
+        return this.motd;
     }
 
     @Override
     public void setMotd(@NotNull String motd) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setMotd'"
-        );
+        this.motd = motd;
+        try {
+            NativeBridgeFfi.setServerMotd(SetServerMotdRequest.newBuilder().setMotd(motd).build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public @NotNull ServerLinks getServerLinks() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getServerLinks'"
-        );
+        return this.serverLinks;
     }
 
     @Override
     public @Nullable String getShutdownMessage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getShutdownMessage'"
-        );
+        return this.shutdownMessage;
     }
 
     @Override
@@ -1488,97 +1563,77 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull ItemFactory getItemFactory() {
-        return org.patchbukkit.inventory.PatchBukkitItemFactory.INSTANCE;
+        return PatchBukkitItemFactory.INSTANCE;
     }
 
     @Override
     public @NotNull EntityFactory getEntityFactory() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getEntityFactory'"
-        );
+        return this.entityFactory;
     }
 
     @Override
     public @NotNull ScoreboardManager getScoreboardManager() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getScoreboardManager'"
-        );
+        return this.scoreboardManager;
     }
 
     @Override
     public @NotNull Criteria getScoreboardCriteria(@NotNull String name) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getScoreboardCriteria'"
-        );
+        return Criteria.create(name);
     }
 
     @Override
     public @Nullable CachedServerIcon getServerIcon() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getServerIcon'"
-        );
+        return null;
     }
 
     @Override
     public @NotNull CachedServerIcon loadServerIcon(@NotNull File file)
         throws IllegalArgumentException, Exception {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'loadServerIcon'"
-        );
+        return () -> "";
     }
 
     @Override
     public @NotNull CachedServerIcon loadServerIcon(
         @NotNull BufferedImage image
     ) throws IllegalArgumentException, Exception {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'loadServerIcon'"
-        );
+        return () -> "";
     }
 
     @Override
     public void setIdleTimeout(int threshold) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setIdleTimeout'"
-        );
+        this.idleTimeout = threshold;
+        try {
+            NativeBridgeFfi.setServerIdleTimeout(SetServerIdleTimeoutRequest.newBuilder().setTimeoutMinutes(threshold).build());
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public int getIdleTimeout() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getIdleTimeout'"
-        );
+        return this.idleTimeout;
     }
 
     @Override
     public int getPauseWhenEmptyTime() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPauseWhenEmptyTime'"
-        );
+        return this.pauseWhenEmptyTime;
     }
 
     @Override
     public void setPauseWhenEmptyTime(int seconds) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'setPauseWhenEmptyTime'"
-        );
+        this.pauseWhenEmptyTime = seconds;
     }
 
     @Override
     public @NotNull ChunkData createChunkData(@NotNull World world) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createChunkData'"
+        return (ChunkData) java.lang.reflect.Proxy.newProxyInstance(
+            ChunkData.class.getClassLoader(),
+            new Class<?>[] { ChunkData.class },
+            (proxy, method, args) -> {
+                if ("getMinHeight".equals(method.getName())) return world.getMinHeight();
+                if ("getMaxHeight".equals(method.getName())) return world.getMaxHeight();
+                if ("getBlockData".equals(method.getName())) return Material.AIR.createBlockData();
+                if ("getType".equals(method.getName())) return Material.AIR;
+                return null;
+            }
         );
     }
 
@@ -1589,10 +1644,7 @@ public class PatchBukkitServer implements Server {
         @NotNull BarStyle style,
         @NotNull BarFlag... flags
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createBossBar'"
-        );
+        return new PatchBukkitBossBar(title, color, style, flags);
     }
 
     @Override
@@ -1603,60 +1655,74 @@ public class PatchBukkitServer implements Server {
         @NotNull BarStyle style,
         @NotNull BarFlag... flags
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createBossBar'"
-        );
+        KeyedBossBar bar = new PatchBukkitKeyedBossBar(key, title, color, style, flags);
+        this.bossBars.put(key, bar);
+        return bar;
     }
 
     @Override
     public @NotNull Iterator<KeyedBossBar> getBossBars() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBossBars'"
-        );
+        return this.bossBars.values().iterator();
     }
 
     @Override
     public @Nullable KeyedBossBar getBossBar(@NotNull NamespacedKey key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getBossBar'"
-        );
+        return this.bossBars.get(key);
     }
 
     @Override
     public boolean removeBossBar(@NotNull NamespacedKey key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'removeBossBar'"
-        );
+        return this.bossBars.remove(key) != null;
     }
 
     @Override
     public @Nullable Entity getEntity(@NotNull UUID uuid) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getEntity'"
-        );
+        for (World world : getWorlds()) {
+            Entity e = world.getEntity(uuid);
+            if (e != null) return e;
+        }
+        return null;
     }
 
     @Override
     public double@NotNull [] getTPS() {
+        try {
+            ServerTickInfoResponse info = NativeBridgeFfi.getServerTickInfo(EmptyRequest.getDefaultInstance());
+            if (info != null && info.getTpsCount() > 0) {
+                double[] arr = new double[info.getTpsCount()];
+                for (int i = 0; i < info.getTpsCount(); i++) {
+                    arr[i] = info.getTps(i);
+                }
+                return arr;
+            }
+        } catch (Throwable ignored) {}
         return new double[] { 20.0, 20.0, 20.0 };
     }
 
     @Override
     public long@NotNull [] getTickTimes() {
+        try {
+            ServerTickInfoResponse info = NativeBridgeFfi.getServerTickInfo(EmptyRequest.getDefaultInstance());
+            if (info != null && info.getTickTimesNanosCount() > 0) {
+                long[] arr = new long[info.getTickTimesNanosCount()];
+                for (int i = 0; i < info.getTickTimesNanosCount(); i++) {
+                    arr[i] = info.getTickTimesNanos(i);
+                }
+                return arr;
+            }
+        } catch (Throwable ignored) {}
         return new long[100];
     }
 
     @Override
     public double getAverageTickTime() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAverageTickTime'"
-        );
+        try {
+            ServerTickInfoResponse info = NativeBridgeFfi.getServerTickInfo(EmptyRequest.getDefaultInstance());
+            if (info != null) {
+                return info.getAverageTickTime();
+            }
+        } catch (Throwable ignored) {}
+        return 50.0;
     }
 
     @Override
@@ -1666,18 +1732,12 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @Nullable Advancement getAdvancement(@NotNull NamespacedKey key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAdvancement'"
-        );
+        return null;
     }
 
     @Override
     public @NotNull Iterator<Advancement> advancementIterator() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'advancementIterator'"
-        );
+        return Collections.emptyIterator();
     }
 
     @Override
@@ -1764,7 +1824,6 @@ public class PatchBukkitServer implements Server {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <T extends Keyed> @Nullable Tag<T> getTag(
         @NotNull String registry,
         @NotNull NamespacedKey tag,
@@ -1774,7 +1833,7 @@ public class PatchBukkitServer implements Server {
             return null;
         }
         try {
-            for (java.lang.reflect.Field field : org.bukkit.Tag.class.getFields()) {
+            for (java.lang.reflect.Field field : Tag.class.getFields()) {
                 if (Tag.class.isAssignableFrom(field.getType())) {
                     Tag<?> val = (Tag<?>) field.get(null);
                     if (val != null && val.getKey().equals(tag)) {
@@ -1782,20 +1841,18 @@ public class PatchBukkitServer implements Server {
                     }
                 }
             }
-        } catch (Throwable ignored) {
-        }
+        } catch (Throwable ignored) {}
         return new org.patchbukkit.tag.PatchBukkitTag<>(tag);
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <T extends Keyed> @NotNull Iterable<Tag<T>> getTags(
         @NotNull String registry,
         @NotNull Class<T> clazz
     ) {
         List<Tag<T>> result = new ArrayList<>();
         try {
-            for (java.lang.reflect.Field field : org.bukkit.Tag.class.getFields()) {
+            for (java.lang.reflect.Field field : Tag.class.getFields()) {
                 if (Tag.class.isAssignableFrom(field.getType())) {
                     Tag<?> val = (Tag<?>) field.get(null);
                     if (val != null) {
@@ -1803,17 +1860,13 @@ public class PatchBukkitServer implements Server {
                     }
                 }
             }
-        } catch (Throwable ignored) {
-        }
+        } catch (Throwable ignored) {}
         return result;
     }
 
     @Override
     public @Nullable LootTable getLootTable(@NotNull NamespacedKey key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getLootTable'"
-        );
+        return null;
     }
 
     @Override
@@ -1821,18 +1874,23 @@ public class PatchBukkitServer implements Server {
         @NotNull CommandSender sender,
         @NotNull String selector
     ) throws IllegalArgumentException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'selectEntities'"
-        );
+        List<Entity> list = new ArrayList<>();
+        if ("@a".equalsIgnoreCase(selector) || "@e".equalsIgnoreCase(selector)) {
+            list.addAll(getOnlinePlayers());
+        } else if ("@s".equalsIgnoreCase(selector) || "@p".equalsIgnoreCase(selector)) {
+            if (sender instanceof Entity e) {
+                list.add(e);
+            }
+        } else {
+            Player p = getPlayer(selector);
+            if (p != null) list.add(p);
+        }
+        return list;
     }
 
     @Override
     public @NotNull StructureManager getStructureManager() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getStructureManager'"
-        );
+        return this.structureManager;
     }
 
     @Override
@@ -1849,34 +1907,21 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull Spigot spigot() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'spigot'"
-        );
+        return this.spigot;
     }
 
     @Override
     public void restart() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'restart'"
-        );
+        shutdown();
     }
 
     @Override
     public void reloadPermissions() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'reloadPermissions'"
-        );
     }
 
     @Override
     public boolean reloadCommandAliases() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'reloadCommandAliases'"
-        );
+        return true;
     }
 
     @Override
@@ -1886,118 +1931,78 @@ public class PatchBukkitServer implements Server {
 
     @Override
     public @NotNull String getPermissionMessage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPermissionMessage'"
-        );
+        return "I'm sorry, but you do not have permission to perform this command. Please contact the server administrators if you believe that this is in error.";
     }
 
     @Override
     public @NotNull Component permissionMessage() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'permissionMessage'"
-        );
+        return Component.text(getPermissionMessage());
     }
 
     @Override
-    public com.destroystokyo.paper.profile.@NotNull PlayerProfile createProfile(
-        @NotNull UUID uuid
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createProfile'"
-        );
+    public PlayerProfile createProfile(@NotNull UUID uuid) {
+        return new PatchBukkitPlayerProfile(uuid, null);
     }
 
     @Override
-    public com.destroystokyo.paper.profile.@NotNull PlayerProfile createProfile(
-        @NotNull String name
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createProfile'"
-        );
+    public PlayerProfile createProfile(@NotNull String name) {
+        return new PatchBukkitPlayerProfile(null, name);
     }
 
     @Override
-    public com.destroystokyo.paper.profile.@NotNull PlayerProfile createProfile(
-        @Nullable UUID uuid,
-        @Nullable String name
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createProfile'"
-        );
+    public PlayerProfile createProfile(@Nullable UUID uuid, @Nullable String name) {
+        return new PatchBukkitPlayerProfile(uuid, name);
     }
 
     @Override
-    public com.destroystokyo.paper.profile.@NotNull PlayerProfile createProfileExact(
-        @Nullable UUID uuid,
-        @Nullable String name
-    ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'createProfileExact'"
-        );
+    public PlayerProfile createProfileExact(@Nullable UUID uuid, @Nullable String name) {
+        return new PatchBukkitPlayerProfile(uuid, name);
     }
 
     @Override
     public int getCurrentTick() {
+        try {
+            ServerTickInfoResponse info = NativeBridgeFfi.getServerTickInfo(EmptyRequest.getDefaultInstance());
+            if (info != null && info.getTickCount() > 0) {
+                return (int) info.getTickCount();
+            }
+        } catch (Throwable ignored) {}
         return (int) (System.currentTimeMillis() / 50);
     }
 
     @Override
     public boolean isStopping() {
-        return false;
+        return this.isStopping;
     }
 
     @Override
     public @NotNull MobGoals getMobGoals() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getMobGoals'"
-        );
+        return this.mobGoals;
     }
 
     @Override
     public @NotNull DatapackManager getDatapackManager() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getDatapackManager'"
-        );
+        return this.datapackManager;
     }
 
     @Override
     public @NotNull PotionBrewer getPotionBrewer() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getPotionBrewer'"
-        );
+        return this.potionBrewer;
     }
 
     @Override
     public @NotNull RegionScheduler getRegionScheduler() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getRegionScheduler'"
-        );
+        return this.regionScheduler;
     }
 
     @Override
     public @NotNull AsyncScheduler getAsyncScheduler() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getAsyncScheduler'"
-        );
+        return this.asyncScheduler;
     }
 
     @Override
     public @NotNull GlobalRegionScheduler getGlobalRegionScheduler() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'getGlobalRegionScheduler'"
-        );
+        return this.globalRegionScheduler;
     }
 
     @Override
@@ -2005,10 +2010,7 @@ public class PatchBukkitServer implements Server {
         @NotNull World world,
         @NotNull Position position
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
@@ -2017,18 +2019,12 @@ public class PatchBukkitServer implements Server {
         @NotNull Position position,
         int squareRadiusChunks
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
     public boolean isOwnedByCurrentRegion(@NotNull Location location) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
@@ -2036,10 +2032,7 @@ public class PatchBukkitServer implements Server {
         @NotNull Location location,
         int squareRadiusChunks
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
@@ -2048,10 +2041,7 @@ public class PatchBukkitServer implements Server {
         int chunkX,
         int chunkZ
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
@@ -2061,10 +2051,7 @@ public class PatchBukkitServer implements Server {
         int chunkZ,
         int squareRadiusChunks
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
@@ -2075,47 +2062,30 @@ public class PatchBukkitServer implements Server {
         int maxChunkX,
         int maxChunkZ
     ) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
     public boolean isOwnedByCurrentRegion(@NotNull Entity entity) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isOwnedByCurrentRegion'"
-        );
+        return true;
     }
 
     @Override
     public boolean isGlobalTickThread() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isGlobalTickThread'"
-        );
+        return isPrimaryThread();
     }
 
     @Override
     public boolean isPaused() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'isPaused'"
-        );
+        return false;
     }
 
     @Override
     public void allowPausing(@NotNull Plugin plugin, boolean value) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException(
-            "Unimplemented method 'allowPausing'"
-        );
     }
 
     public @NotNull Path getLevelDirectory() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getLevelDirectory'");
+        return Path.of(".");
     }
 
     @Override
@@ -2136,5 +2106,20 @@ public class PatchBukkitServer implements Server {
     @Override
     public int getWaterAnimalSpawnLimit() {
         return 5;
+    }
+
+    @Override
+    public @NotNull io.papermc.paper.configuration.ServerConfiguration getServerConfig() {
+        return new io.papermc.paper.configuration.ServerConfiguration() {
+            @Override
+            public boolean isProxyOnlineMode() {
+                return false;
+            }
+
+            @Override
+            public boolean isProxyEnabled() {
+                return false;
+            }
+        };
     }
 }

@@ -83,6 +83,16 @@ public class PatchBukkitEntity implements Entity {
         return this.perm;
     }
 
+    private Location cachedLocation;
+    private EntityType entityType = EntityType.UNKNOWN;
+
+    public static Entity create(UUID uuid, EntityType type, Location loc) {
+        PatchBukkitEntity entity = new PatchBukkitEntity(uuid, type != null ? type.name() : "entity");
+        entity.entityType = type != null ? type : EntityType.UNKNOWN;
+        entity.cachedLocation = loc != null ? loc.clone() : new Location(null, 0, 0, 0);
+        return entity;
+    }
+
     public PatchBukkitEntity(
         UUID uuid,
         String name
@@ -263,10 +273,15 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull Location getLocation() {
-        var location = NativeBridgeFfi.getLocation(BridgeUtils.convertUuid(this.uuid));
-        var world = PatchBukkitWorld.getOrCreate(BridgeUtils.convertUuid(location.getWorld().getUuid()));
-        var position = location.getPosition();
-        return new Location(world, position.getX(), position.getY(), position.getZ(), location.getYaw(), location.getPitch());
+        try {
+            var location = NativeBridgeFfi.getLocation(BridgeUtils.convertUuid(this.uuid));
+            if (location != null && location.hasWorld() && location.hasPosition()) {
+                var world = PatchBukkitWorld.getOrCreate(BridgeUtils.convertUuid(location.getWorld().getUuid()));
+                var position = location.getPosition();
+                return new Location(world, position.getX(), position.getY(), position.getZ(), location.getYaw(), location.getPitch());
+            }
+        } catch (Throwable ignored) {}
+        return this.cachedLocation != null ? this.cachedLocation.clone() : new Location(null, 0, 0, 0);
     }
 
     @Override
@@ -646,8 +661,7 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull EntityType getType() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getType'");
+        return this.entityType != null ? this.entityType : EntityType.UNKNOWN;
     }
 
     @Override

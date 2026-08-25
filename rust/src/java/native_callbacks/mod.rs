@@ -47,6 +47,9 @@ pub use itemstack::*;
 pub mod command;
 pub use command::*;
 
+pub mod server;
+pub use server::*;
+
 static CALLBACK_CONTEXT: OnceLock<CallbackContext> = OnceLock::new();
 
 struct CallbackContext {
