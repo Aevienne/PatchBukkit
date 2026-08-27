@@ -50,27 +50,23 @@ impl ArgumentConsumer for AnyCommandNode {
         _server: &'a pumpkin::server::Server,
         args: &mut pumpkin::command::tree::RawArgs<'a>,
     ) -> pumpkin::command::args::ConsumeResult<'a> {
-        let first_word_opt = args.pop();
-
-        let mut msg = match first_word_opt {
-            Some(word) => word.value.to_string(),
-            None => return Box::pin(async { None }),
-        };
+        let first_word = args.pop()?;
+        let mut msg = first_word.value.to_string();
 
         while let Some(word) = args.pop() {
             msg.push(' ');
             msg.push_str(word.value);
         }
 
-        Box::pin(async move { Some(Arg::Msg(msg)) })
+        Some(Arg::Msg(msg))
     }
 
-    fn suggest<'a>(
-        &'a self,
+    fn suggest(
+        &self,
         sender: &pumpkin::command::CommandSender,
-        _server: &'a pumpkin::server::Server,
-        input: &'a str,
-    ) -> SuggestResult<'a> {
+        _server: &pumpkin::server::Server,
+        input: &str,
+    ) -> SuggestResult {
         let location = if let Some(position) = sender.position()
             && let Some(world) = sender.world()
         {
@@ -92,27 +88,50 @@ impl ArgumentConsumer for AnyCommandNode {
 
         let command_sender: SimpleCommandSender = sender.into();
 
-        Box::pin(async move {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async move {
+                    let (tx, rx) = oneshot::channel();
+                    if let Err(e) = self
+                        .command_tx
+                        .send(JvmCommand::GetCommandTabComplete {
+                            command_sender,
+                            full_command: input.to_string(),
+                            respond_to: tx,
+                            location,
+                        })
+                        .await
+                    {
+                        tracing::warn!("Failed to send tab complete to JVM worker: {e}");
+                        return Ok(None);
+                    }
+
+                    match rx.await {
+                        Ok(res) => res,
+                        Err(_) => Ok(None),
+                    }
+                })
+            })
+        } else {
             let (tx, rx) = oneshot::channel();
             if let Err(e) = self
                 .command_tx
-                .send(JvmCommand::GetCommandTabComplete {
+                .blocking_send(JvmCommand::GetCommandTabComplete {
                     command_sender,
                     full_command: input.to_string(),
                     respond_to: tx,
                     location,
                 })
-                .await
             {
                 tracing::warn!("Failed to send tab complete to JVM worker: {e}");
                 return Ok(None);
             }
 
-            match rx.await {
+            match rx.blocking_recv() {
                 Ok(res) => res,
                 Err(_) => Ok(None),
             }
-        })
+        }
     }
 }
 
@@ -135,51 +154,70 @@ impl From<&CommandSender> for SimpleCommandSender {
 }
 
 impl CommandExecutor for JavaCommandExecutor {
-    fn execute<'a>(
-        &'a self,
-        sender: &'a pumpkin::command::CommandSender,
-        _server: &'a pumpkin::server::Server,
-        args: &'a pumpkin::command::args::ConsumedArgs<'a>,
-    ) -> pumpkin::command::CommandResult<'a> {
+    fn execute(
+        &self,
+        sender: &pumpkin::command::CommandSender,
+        _server: &pumpkin::server::Server,
+        args: &pumpkin::command::args::ConsumedArgs,
+    ) -> pumpkin::command::CommandResult {
         if let CommandSender::Player(player) = sender {
             crate::java::native_callbacks::utils::cache_player(player.clone());
         }
 
-        Box::pin(async move {
-            let full_command = match args.get(ARG_ANY) {
-                Some(Arg::Msg(msg)) => {
-                    if self.cmd_name.starts_with('/') {
-                        format!("{} {}", self.cmd_name, msg)
-                    } else {
-                        format!("/{} {}", self.cmd_name, msg)
-                    }
+        let full_command = match args.get(ARG_ANY) {
+            Some(Arg::Msg(msg)) => {
+                if self.cmd_name.starts_with('/') {
+                    format!("{} {}", self.cmd_name, msg)
+                } else {
+                    format!("/{} {}", self.cmd_name, msg)
                 }
-                _ => {
-                    if self.cmd_name.starts_with('/') {
-                        self.cmd_name.clone()
-                    } else {
-                        format!("/{}", self.cmd_name)
-                    }
+            }
+            _ => {
+                if self.cmd_name.starts_with('/') {
+                    self.cmd_name.clone()
+                } else {
+                    format!("/{}", self.cmd_name)
                 }
-            };
+            }
+        };
 
-            let (tx, rx) = oneshot::channel();
-            if let Err(e) = self
-                .command_tx
-                .send(JvmCommand::TriggerCommand {
-                    full_command,
-                    respond_to: tx,
-                    command_sender: sender.into(),
+        let command_sender: SimpleCommandSender = sender.into();
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            tokio::task::block_in_place(|| {
+                handle.block_on(async move {
+                    let (tx, rx) = oneshot::channel();
+                    if let Err(e) = self
+                        .command_tx
+                        .send(JvmCommand::TriggerCommand {
+                            full_command,
+                            respond_to: tx,
+                            command_sender,
+                        })
+                        .await
+                    {
+                        tracing::error!("Failed to send command to JVM worker: {e}");
+                        return Ok(0);
+                    }
+
+                    let _ = rx.await;
+                    Ok(1)
                 })
-                .await
-            {
+            })
+        } else {
+            let (tx, rx) = oneshot::channel();
+            if let Err(e) = self.command_tx.blocking_send(JvmCommand::TriggerCommand {
+                full_command,
+                respond_to: tx,
+                command_sender,
+            }) {
                 tracing::error!("Failed to send command to JVM worker: {e}");
                 return Ok(0);
             }
 
-            let _ = rx.await;
+            let _ = rx.blocking_recv();
             Ok(1)
-        })
+        }
     }
 }
 

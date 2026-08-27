@@ -109,11 +109,7 @@ pub fn ffi_native_bridge_set_block_data_impl(request: SetBlockDataRequest) -> Op
     } else {
         pumpkin::world::BlockFlags::NOTIFY_LISTENERS
     };
-    tokio::task::block_in_place(|| {
-        ctx.runtime.block_on(async {
-            world.set_block_state(&pos, state_id, flags).await;
-        })
-    });
+    world.set_block_state(&pos, state_id, flags);
 
     Some(())
 }
@@ -178,8 +174,11 @@ pub fn ffi_native_bridge_set_world_border_impl(request: SetWorldBorderRequest) -
         .cloned()
         .or_else(|| worlds.first().cloned())?;
 
-    ctx.runtime.spawn(async move {
-        let mut wb = world.worldborder.lock().await;
+    {
+        let mut wb = world
+            .worldborder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         wb.center_x = border_data.center_x;
         wb.center_z = border_data.center_z;
         wb.old_diameter = border_data.size;
@@ -190,7 +189,7 @@ pub fn ffi_native_bridge_set_world_border_impl(request: SetWorldBorderRequest) -
         wb.damage_per_block = border_data.damage_per_block as f32;
         wb.buffer = border_data.damage_buffer as f32;
         wb.portal_teleport_boundary = border_data.max_center_coordinate;
-    });
+    }
 
     Some(())
 }
@@ -480,7 +479,7 @@ pub fn ffi_native_bridge_spawn_world_entity_impl(
                 _ => &pumpkin_data::entity::EntityType::PIG,
             };
         let entity = pumpkin::entity::r#type::from_type(entity_type, pos, &w, new_uuid);
-        w.spawn_entity(entity).await;
+        w.spawn_entity(entity);
     });
 
     Some(SpawnWorldEntityResponse {
@@ -513,10 +512,7 @@ pub fn ffi_native_bridge_create_world_explosion_impl(
         pumpkin::world::ExplosionInteraction::None
     };
 
-    let w = world.clone();
-    ctx.runtime.spawn(async move {
-        w.explode(pos, power, interaction).await;
-    });
+    world.explode(pos, power, interaction);
 
     Some(())
 }

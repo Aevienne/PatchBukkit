@@ -71,18 +71,14 @@ pub fn ffi_native_bridge_player_play_sound_impl(request: PlayerPlaySoundRequest)
     let position = request.location?.position?;
     let position: Vector3<f64> = Vector3::new(position.x, position.y, position.z);
 
-    ctx.runtime.spawn(async move {
-        player
-            .play_sound(
-                pumpkin_sound as u16,
-                category,
-                &position,
-                request.volume,
-                request.pitch,
-                seed,
-            )
-            .await;
-    });
+    player.play_sound(
+        pumpkin_sound as u16,
+        category,
+        &position,
+        request.volume,
+        request.pitch,
+        seed,
+    );
 
     Some(())
 }

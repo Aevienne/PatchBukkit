@@ -196,9 +196,7 @@ pub fn ffi_native_bridge_broadcast_message_impl(request: BroadcastMessageRequest
     let server = ctx.plugin_context.server.clone();
     let text = TextComponent::text(request.message);
     let sender = TextComponent::text("Server");
-    ctx.runtime.spawn(async move {
-        server.broadcast_message(&text, &sender, 0, None).await;
-    });
+    server.broadcast_message(&text, &sender, 0, None);
     Some(())
 }
 
@@ -229,21 +227,23 @@ pub fn ffi_native_bridge_set_whitelist_player_impl(
     let target_name = request.name;
     let server = ctx.plugin_context.server.clone();
 
-    ctx.runtime.spawn(async move {
-        let mut config = server.data.whitelist_config.write().await;
-        if request.whitelisted {
-            if !config.whitelist.iter().any(|e| e.uuid == target_uuid) {
-                config
-                    .whitelist
-                    .push(pumpkin_config::whitelist::WhitelistEntry {
-                        uuid: target_uuid,
-                        name: target_name,
-                    });
-            }
-        } else {
-            config.whitelist.retain(|e| e.uuid != target_uuid);
+    let mut config = server
+        .data
+        .whitelist_config
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if request.whitelisted {
+        if !config.whitelist.iter().any(|e| e.uuid == target_uuid) {
+            config
+                .whitelist
+                .push(pumpkin_config::whitelist::WhitelistEntry {
+                    uuid: target_uuid,
+                    name: target_name,
+                });
         }
-    });
+    } else {
+        config.whitelist.retain(|e| e.uuid != target_uuid);
+    }
     Some(())
 }
 
@@ -280,23 +280,25 @@ pub fn ffi_native_bridge_set_operator_impl(request: SetOperatorRequest) -> Optio
     };
     let server = ctx.plugin_context.server.clone();
 
-    ctx.runtime.spawn(async move {
-        let mut config = server.data.operator_config.write().await;
-        if request.is_op {
-            if let Some(op) = config.ops.iter_mut().find(|e| e.uuid == target_uuid) {
-                op.level = level;
-            } else {
-                config.ops.push(pumpkin_config::op::Op {
-                    uuid: target_uuid,
-                    name: target_name,
-                    level,
-                    bypasses_player_limit: false,
-                });
-            }
+    let mut config = server
+        .data
+        .operator_config
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if request.is_op {
+        if let Some(op) = config.ops.iter_mut().find(|e| e.uuid == target_uuid) {
+            op.level = level;
         } else {
-            config.ops.retain(|e| e.uuid != target_uuid);
+            config.ops.push(pumpkin_config::op::Op {
+                uuid: target_uuid,
+                name: target_name,
+                level,
+                bypasses_player_limit: false,
+            });
         }
-    });
+    } else {
+        config.ops.retain(|e| e.uuid != target_uuid);
+    }
     Some(())
 }
 
@@ -343,58 +345,63 @@ pub fn ffi_native_bridge_set_ban_entry_impl(request: SetBanEntryRequest) -> Opti
     let ctx = CALLBACK_CONTEXT.get()?;
     let server = ctx.plugin_context.server.clone();
 
-    ctx.runtime.spawn(async move {
-        if let Some(entry) = request.entry {
-            if request.ban_type == "IP" {
-                if let Ok(ip) = entry.target.parse::<std::net::IpAddr>() {
-                    let mut list = server.data.banned_ip_list.write().await;
-                    if request.remove {
-                        list.banned_ips.retain(|e| e.ip != ip);
-                    } else {
-                        list.banned_ips.retain(|e| e.ip != ip);
-                        let expires = if entry.expires > 0 {
-                            time::OffsetDateTime::from_unix_timestamp(entry.expires).ok()
-                        } else {
-                            None
-                        };
-                        list.banned_ips
-                            .push(pumpkin::data::banlist_serializer::BannedIpEntry {
-                                ip,
-                                created: time::OffsetDateTime::now_utc(),
-                                source: entry.source,
-                                expires,
-                                reason: entry.reason,
-                            });
-                    }
-                }
-            } else {
-                let mut list = server.data.banned_player_list.write().await;
-                let target_name = entry.target.clone();
+    if let Some(entry) = request.entry {
+        if request.ban_type == "IP" {
+            if let Ok(ip) = entry.target.parse::<std::net::IpAddr>() {
+                let mut list = server
+                    .data
+                    .banned_ip_list
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if request.remove {
-                    list.banned_players
-                        .retain(|e| !e.name.eq_ignore_ascii_case(&target_name));
+                    list.banned_ips.retain(|e| e.ip != ip);
                 } else {
-                    list.banned_players
-                        .retain(|e| !e.name.eq_ignore_ascii_case(&target_name));
+                    list.banned_ips.retain(|e| e.ip != ip);
                     let expires = if entry.expires > 0 {
                         time::OffsetDateTime::from_unix_timestamp(entry.expires).ok()
                     } else {
                         None
                     };
-                    list.banned_players.push(
-                        pumpkin::data::banlist_serializer::BannedPlayerEntry {
-                            uuid: uuid::Uuid::nil(),
-                            name: target_name,
+                    list.banned_ips
+                        .push(pumpkin::data::banlist_serializer::BannedIpEntry {
+                            ip,
                             created: time::OffsetDateTime::now_utc(),
                             source: entry.source,
                             expires,
                             reason: entry.reason,
-                        },
-                    );
+                        });
                 }
             }
+        } else {
+            let mut list = server
+                .data
+                .banned_player_list
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let target_name = entry.target.clone();
+            if request.remove {
+                list.banned_players
+                    .retain(|e| !e.name.eq_ignore_ascii_case(&target_name));
+            } else {
+                list.banned_players
+                    .retain(|e| !e.name.eq_ignore_ascii_case(&target_name));
+                let expires = if entry.expires > 0 {
+                    time::OffsetDateTime::from_unix_timestamp(entry.expires).ok()
+                } else {
+                    None
+                };
+                list.banned_players
+                    .push(pumpkin::data::banlist_serializer::BannedPlayerEntry {
+                        uuid: uuid::Uuid::nil(),
+                        name: target_name,
+                        created: time::OffsetDateTime::now_utc(),
+                        source: entry.source,
+                        expires,
+                        reason: entry.reason,
+                    });
+            }
         }
-    });
+    }
     Some(())
 }
 

@@ -62,9 +62,7 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             tracing::debug!("Permission '{}' registration notice: {}", permission, e);
         }
 
-        plugin_context
-            .register_command(node, permission.clone())
-            .await;
+        plugin_context.register_command(node, permission.clone());
 
         tracing::info!(
             "Successfully registered command '{}' with names {:?} and permission '{}'",

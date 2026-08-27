@@ -33,25 +33,17 @@ pub fn ffi_native_bridge_get_entity_health_impl(request: Uuid) -> Option<EntityH
 }
 
 pub fn ffi_native_bridge_set_entity_health_impl(request: SetEntityHealthRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let health = request.health as f32;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player.set_health(health).await;
-        });
+        player.set_health(health);
     })
 }
 
 pub fn ffi_native_bridge_damage_entity_impl(request: DamageEntityRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let amount = request.amount as f32;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let current = player.living_entity.health.load();
-            player.set_health((current - amount).max(0.0)).await;
-        });
+        let current = player.living_entity.health.load();
+        player.set_health((current - amount).max(0.0));
     })
 }
 
@@ -95,14 +87,10 @@ pub fn ffi_native_bridge_get_gamemode_impl(
 pub fn ffi_native_bridge_set_gamemode_impl(
     request: crate::proto::patchbukkit::entity::SetGamemodeRequest,
 ) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let gamemode_val = request.gamemode as i8;
         if let Ok(gamemode) = pumpkin_util::gamemode::GameMode::try_from(gamemode_val) {
-            let player = player.clone();
-            ctx.runtime.spawn(async move {
-                player.set_gamemode(gamemode).await;
-            });
+            player.set_gamemode(gamemode);
         }
     })
 }
@@ -211,26 +199,18 @@ pub fn ffi_native_bridge_get_food_level_impl(request: Uuid) -> Option<GetFoodLev
 }
 
 pub fn ffi_native_bridge_set_food_level_impl(request: SetFoodLevelRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let food_level = request.food_level as u8;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player.hunger_manager.set_level(food_level);
-            player.send_health().await;
-        });
+        player.hunger_manager.set_level(food_level);
+        player.send_health();
     })
 }
 
 pub fn ffi_native_bridge_set_saturation_impl(request: SetSaturationRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let saturation = request.saturation;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player.hunger_manager.set_saturation(saturation);
-            player.send_health().await;
-        });
+        player.hunger_manager.set_saturation(saturation);
+        player.send_health();
     })
 }
 
@@ -254,122 +234,82 @@ pub fn ffi_native_bridge_get_experience_impl(request: Uuid) -> Option<GetExperie
 }
 
 pub fn ffi_native_bridge_set_experience_impl(request: SetExperienceRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let level = request.level;
         let progress = request.progress;
         let total_experience = request.total_experience;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player
-                .set_experience(level, progress, total_experience)
-                .await;
-        });
+        player.set_experience(level, progress, total_experience);
     })
 }
 
 pub fn ffi_native_bridge_kick_player_impl(request: KickPlayerRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let msg = request.message;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
-            player
-                .kick(pumpkin::net::DisconnectReason::Kicked, text)
-                .await;
-        });
+        let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
+        player.kick(pumpkin::net::DisconnectReason::Kicked, &text);
     })
 }
 
 pub fn ffi_native_bridge_send_title_impl(request: SendTitleRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let title = request.title;
         let subtitle = request.subtitle;
         let fade_in = request.fade_in;
         let stay = request.stay;
         let fade_out = request.fade_out;
-        ctx.runtime.spawn(async move {
-            if fade_in >= 0 && stay >= 0 && fade_out >= 0 {
-                player.send_title_animation(fade_in, stay, fade_out).await;
-            }
-            if !title.is_empty() {
-                let text = pumpkin_util::text::TextComponent::from_legacy_string(&title);
-                player
-                    .show_title(&text, &pumpkin::entity::player::TitleMode::Title)
-                    .await;
-            }
-            if !subtitle.is_empty() {
-                let text = pumpkin_util::text::TextComponent::from_legacy_string(&subtitle);
-                player
-                    .show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle)
-                    .await;
-            }
-        });
+        if fade_in >= 0 && stay >= 0 && fade_out >= 0 {
+            player.send_title_animation(fade_in, stay, fade_out);
+        }
+        if !title.is_empty() {
+            let text = pumpkin_util::text::TextComponent::from_legacy_string(&title);
+            player.show_title(&text, &pumpkin::entity::player::TitleMode::Title);
+        }
+        if !subtitle.is_empty() {
+            let text = pumpkin_util::text::TextComponent::from_legacy_string(&subtitle);
+            player.show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle);
+        }
     })
 }
 
 pub fn ffi_native_bridge_send_action_bar_impl(request: SendActionBarRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let msg = request.message;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
-            player.send_system_message_raw(&text, true).await;
-        });
+        let text = pumpkin_util::text::TextComponent::from_legacy_string(&msg);
+        player.send_system_message_raw(&text, true);
     })
 }
 
 pub fn ffi_native_bridge_reset_title_impl(request: Uuid) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let text = pumpkin_util::text::TextComponent::text("");
-            player
-                .show_title(&text, &pumpkin::entity::player::TitleMode::Title)
-                .await;
-            player
-                .show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle)
-                .await;
-        });
+        let text = pumpkin_util::text::TextComponent::text("");
+        player.show_title(&text, &pumpkin::entity::player::TitleMode::Title);
+        player.show_title(&text, &pumpkin::entity::player::TitleMode::SubTitle);
     })
 }
 
 pub fn ffi_native_bridge_set_display_name_impl(request: SetDisplayNameRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let name = request.display_name;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let comp = if name.is_empty() {
-                None
-            } else {
-                Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
-            };
-            player.set_display_name(comp).await;
-        });
+        let comp = if name.is_empty() {
+            None
+        } else {
+            Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
+        };
+        player.set_display_name(comp);
     })
 }
 
 pub fn ffi_native_bridge_set_player_list_name_impl(
     request: SetPlayerListNameRequest,
 ) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
         let name = request.list_name;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let comp = if name.is_empty() {
-                None
-            } else {
-                Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
-            };
-            player.set_tab_list_name(comp).await;
-        });
+        let comp = if name.is_empty() {
+            None
+        } else {
+            Some(pumpkin_util::text::TextComponent::from_legacy_string(&name))
+        };
+        player.set_tab_list_name(comp);
     })
 }
 
@@ -425,24 +365,16 @@ pub fn ffi_native_bridge_get_player_pose_state_impl(
 }
 
 pub fn ffi_native_bridge_set_sneaking_impl(request: SetSneakingRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let sneaking = request.sneaking;
-        ctx.runtime.spawn(async move {
-            player.living_entity.entity.set_sneaking(sneaking).await;
-        });
+        player.living_entity.entity.set_sneaking(sneaking);
     })
 }
 
 pub fn ffi_native_bridge_set_sprinting_impl(request: SetSprintingRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let sprinting = request.sprinting;
-        ctx.runtime.spawn(async move {
-            player.living_entity.entity.set_sprinting(sprinting).await;
-        });
+        player.living_entity.entity.set_sprinting(sprinting);
     })
 }
 
@@ -464,7 +396,12 @@ pub fn ffi_native_bridge_reset_player_time_impl(request: Uuid) -> Option<()> {
     with_player(Some(&request), |player| {
         let player = player.clone();
         ctx.runtime.spawn(async move {
-            let world_time = player.world().level_time.lock().await.time_of_day;
+            let world_time = player
+                .world()
+                .level_time
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .time_of_day;
             let packet = pumpkin_protocol::java::client::play::CUpdateTime::new(
                 world_time, world_time, true,
             );
@@ -495,7 +432,7 @@ pub fn ffi_native_bridge_reset_player_weather_impl(request: Uuid) -> Option<()> 
     with_player(Some(&request), |player| {
         let player = player.clone();
         ctx.runtime.spawn(async move {
-            let is_raining = player.world().is_raining().await;
+            let is_raining = player.world().is_raining();
             let event = if is_raining {
                 pumpkin_protocol::java::client::play::GameEvent::BeginRaining
             } else {
@@ -544,20 +481,14 @@ pub fn ffi_native_bridge_get_compass_target_impl(
 }
 
 pub fn ffi_native_bridge_set_respawn_point_impl(request: SetRespawnPointRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     let pos = request.position?;
     with_player(request.uuid.as_ref(), |player| {
         let block_pos =
             pumpkin_util::math::position::BlockPos::new(pos.x as i32, pos.y as i32, pos.z as i32);
         let yaw = request.yaw;
         let force = request.force;
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            let dim = player.world().dimension.clone();
-            player
-                .set_respawn_point(dim, block_pos, yaw, 0.0, force)
-                .await;
-        });
+        let dim = player.world().dimension.clone();
+        player.set_respawn_point(dim, block_pos, yaw, 0.0, force);
     })
 }
 
@@ -613,9 +544,7 @@ pub fn ffi_native_bridge_get_respawn_point_impl(
 }
 
 pub fn ffi_native_bridge_stop_sound_impl(request: StopSoundRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let sound = if request.sound.is_empty() {
             None
         } else {
@@ -626,9 +555,7 @@ pub fn ffi_native_bridge_stop_sound_impl(request: StopSoundRequest) -> Option<()
         } else {
             pumpkin_data::sound::SoundCategory::from_name(&request.category.to_lowercase())
         };
-        ctx.runtime.spawn(async move {
-            player.stop_sound(sound, category).await;
-        });
+        player.stop_sound(sound, category);
     })
 }
 
@@ -718,14 +645,10 @@ pub fn ffi_native_bridge_send_game_event_impl(request: SendGameEventRequest) -> 
 }
 
 pub fn ffi_native_bridge_set_cooldown_impl(request: SetCooldownRequest) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
         let group = request.item_group;
         let duration = request.duration_ticks;
-        ctx.runtime.spawn(async move {
-            player.start_cooldown(group, duration).await;
-        });
+        player.start_cooldown(group, duration);
     })
 }
 
@@ -758,23 +681,13 @@ pub fn ffi_native_bridge_get_cooldown_impl(
 }
 
 pub fn ffi_native_bridge_open_ender_chest_impl(request: Uuid) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player.open_ender_chest().await;
-        });
+        player.open_ender_chest();
     })
 }
 
 pub fn ffi_native_bridge_update_inventory_impl(request: Uuid) -> Option<()> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     with_player(Some(&request), |player| {
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            player
-                .on_screen_handler_opened(player.player_screen_handler.clone())
-                .await;
-        });
+        player.on_screen_handler_opened(&player.player_screen_handler);
     })
 }

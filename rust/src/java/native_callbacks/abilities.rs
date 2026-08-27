@@ -1,4 +1,4 @@
-use crate::java::native_callbacks::{CALLBACK_CONTEXT, utils::with_player};
+use crate::java::native_callbacks::utils::with_player;
 use crate::proto::patchbukkit::{
     abilities::{Abilities, SetAbilitiesRequest},
     common::Uuid,
@@ -50,23 +50,22 @@ pub fn ffi_native_bridge_get_abilities_impl(request: Uuid) -> Option<Abilities> 
 }
 
 pub fn ffi_native_bridge_set_abilities_impl(request: SetAbilitiesRequest) -> Option<bool> {
-    let ctx = CALLBACK_CONTEXT.get()?;
     let abilities = request.abilities?;
     with_player(request.uuid.as_ref(), |player| {
-        let player = player.clone();
-        ctx.runtime.spawn(async move {
-            {
-                let mut pumpkin_abilities = player.abilities.lock().await;
-                pumpkin_abilities.invulnerable = abilities.invulnerable;
-                pumpkin_abilities.flying = abilities.flying;
-                pumpkin_abilities.allow_flying = abilities.allow_flying;
-                pumpkin_abilities.creative = abilities.creative;
-                pumpkin_abilities.allow_modify_world = abilities.allow_modify_world;
-                pumpkin_abilities.fly_speed = abilities.fly_speed;
-                pumpkin_abilities.walk_speed = abilities.walk_speed;
-            }
-            player.send_abilities_update().await;
-        });
+        {
+            let mut pumpkin_abilities = player
+                .abilities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            pumpkin_abilities.invulnerable = abilities.invulnerable;
+            pumpkin_abilities.flying = abilities.flying;
+            pumpkin_abilities.allow_flying = abilities.allow_flying;
+            pumpkin_abilities.creative = abilities.creative;
+            pumpkin_abilities.allow_modify_world = abilities.allow_modify_world;
+            pumpkin_abilities.fly_speed = abilities.fly_speed;
+            pumpkin_abilities.walk_speed = abilities.walk_speed;
+        }
+        player.send_abilities_update();
 
         Some(true)
     })?
