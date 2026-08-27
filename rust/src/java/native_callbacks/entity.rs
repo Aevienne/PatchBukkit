@@ -107,9 +107,7 @@ pub fn ffi_native_bridge_teleport_entity_impl(request: TeleportEntityRequest) ->
         let world = player.living_entity.entity.world.load_full();
         let player = player.clone();
         ctx.runtime.spawn(async move {
-            player
-                .teleport(position, Some(yaw), Some(pitch), world)
-                .await;
+            player.teleport(position, Some(yaw), Some(pitch), world);
         });
     })
 }

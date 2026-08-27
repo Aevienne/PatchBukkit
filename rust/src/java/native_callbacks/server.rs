@@ -420,7 +420,7 @@ pub fn ffi_native_bridge_create_world_impl(
     let world_name = name.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     ctx.runtime.spawn(async move {
-        let world = server.create_world(world_name, dim).await;
+        let world = server.create_world(world_name, dim);
         let _ = tx.send(world.uuid);
     });
 
