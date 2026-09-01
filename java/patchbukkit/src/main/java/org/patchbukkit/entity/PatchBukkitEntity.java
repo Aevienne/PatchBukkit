@@ -1013,8 +1013,7 @@ public class PatchBukkitEntity implements Entity {
 
     @Override
     public @NotNull EntityScheduler getScheduler() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getScheduler'");
+        return new org.patchbukkit.scheduler.PatchBukkitEntityScheduler(this);
     }
 
     @Override
