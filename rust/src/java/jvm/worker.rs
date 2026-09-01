@@ -290,8 +290,7 @@ impl JvmWorker {
             .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("-XX:ErrorFile=/home/container/hs_err.log")
             .option("-Xcheck:jni")
-            .option("--enable-native-access=ALL-UNNAMED
-            .option("--sun-misc-unsafe-memory-access=allow")")
+            .option("--enable-native-access=ALL-UNNAMED")
             .option("--enable-final-field-mutation=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
