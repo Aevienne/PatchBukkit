@@ -285,12 +285,13 @@ impl JvmWorker {
             .join(separator);
 
         let jvm_args = InitArgsBuilder::new()
-            .version(JNIVersion::V21)
+            .version(JNIVersion::V25)
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("-XX:ErrorFile=/home/container/hs_err.log")
             .option("-Xcheck:jni")
-            .option("--enable-native-access=ALL-UNNAMED")
+            .option("--enable-native-access=ALL-UNNAMED
+            .option("--sun-misc-unsafe-memory-access=allow")")
             .option("--enable-final-field-mutation=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
             .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
