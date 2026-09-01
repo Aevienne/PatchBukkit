@@ -49,3 +49,5 @@ The target remains offline after testing. The rollback step restores `libpatchbu
 ## Scope
 
 This report records the first reproducible compatibility failure. It does not identify the native crash frame. The next diagnostic should capture a host core dump or run the JVM under `gdb`, then inspect the Rust JNI/FFM worker and Java 25 initialization path.
+
+The Java 25 container and Calagopus host did not provide `gdb` or `coredumpctl`. A `gdb -batch -ex run -ex bt --args ./pumpkin` attempt therefore could not produce a native backtrace. The target library was disabled again after the attempt, and Pumpkin DEV remains offline.
