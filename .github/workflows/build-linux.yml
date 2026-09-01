@@ -47,3 +47,54 @@ jobs:
             rust/target/release/libpatchbukkit.so
             java/patchbukkit/build/libs/patchbukkit.jar
             java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar
+
+  deploy-dev:
+    needs: build
+    if: github.ref == 'refs/heads/diag/playasia-jvm-core-dump'
+    runs-on: ubuntu-latest
+    environment: pumpkin-dev
+    steps:
+      - name: Download bridge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: patchbukkit-linux-${{ github.sha }}
+          path: artifact
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Trust VM host key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' '${{ secrets.VM_HOST_KEY }}' > ~/.ssh/known_hosts
+
+      - name: Deploy and test Pumpkin DEV only
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+          scp artifact/rust/target/release/libpatchbukkit.so \
+            artifact/java/patchbukkit/build/libs/patchbukkit.jar \
+            artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar \
+            '${{ secrets.VM_USER }}@139.99.121.15:/tmp/'
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          set -euo pipefail
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          install -m 0755 /tmp/libpatchbukkit.so "$vol/plugins/libpatchbukkit.so"
+          install -m 0644 /tmp/patchbukkit.jar "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"
+          install -m 0644 /tmp/patchbukkit-test-plugin.jar "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar"
+          cleanup() {
+            mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true
+            mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true
+          }
+          trap cleanup EXIT
+          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full \
+            -v "$vol":/home/container -w /home/container \
+            ghcr.io/ptero-eggs/yolks:java_25 \
+            bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; test ${PIPESTATUS[0]} -eq 124'
+          REMOTE
+          } | ssh '${{ secrets.VM_USER }}@139.99.121.15' 'sudo -S bash -s'
