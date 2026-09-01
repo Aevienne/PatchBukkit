@@ -1,0 +1,49 @@
+name: Build Linux bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feat/**'
+      - 'diag/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build Java bridge
+        working-directory: java
+        run: ./gradlew --no-daemon --no-configuration-cache jar
+
+      - name: Build native bridge
+        working-directory: rust
+        env:
+          CARGO_BUILD_JOBS: 2
+          CARGO_PROFILE_RELEASE_LTO: 'false'
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+        run: cargo build --release --jobs 2
+
+      - name: Upload bridge artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: patchbukkit-linux-${{ github.sha }}
+          path: |
+            rust/target/release/libpatchbukkit.so
+            java/patchbukkit/build/libs/patchbukkit.jar
+            java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar
