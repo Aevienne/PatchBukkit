@@ -308,7 +308,7 @@ impl JvmWorker {
             JavaVM::new(jvm_args).map_err(|e| anyhow::anyhow!("Failed to create JavaVM: {e:?}"))?;
         let jvm = Arc::new(jvm);
 
-        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+        let init_result = jvm.attach_current_thread(|env| -> anyhow::Result<()> {
             initialize_callbacks(env).map_err(|e| {
                 tracing::error!("Failed to initialize callbacks: {e:?}");
                 e
@@ -316,12 +316,20 @@ impl JvmWorker {
 
             setup_patchbukkit_server(env).map_err(|e| {
                 tracing::error!("Failed to setup PatchBukkit server: {e:?}");
+                if env.exception_check() {
+                    env.exception_describe();
+                    env.exception_clear();
+                }
                 e
             })?;
 
             Ok(())
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
+        });
+
+        if let Err(e) = &init_result {
+            tracing::error!("JVM initialization attach failed: {e:?}");
+        }
+        init_result.map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
 
         self.jvm = Some(jvm);
 

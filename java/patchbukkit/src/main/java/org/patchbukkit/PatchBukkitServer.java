@@ -185,9 +185,22 @@ public class PatchBukkitServer implements Server {
     static {
         try {
             Class<?> sharedConstants = Class.forName("net.minecraft.SharedConstants");
-            sharedConstants.getMethod("tryDetectVersion").invoke(null);
+            try {
+                sharedConstants.getMethod("tryDetectVersion").invoke(null);
+            } catch (Throwable ignored) {}
             Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
-            bootstrap.getMethod("bootStrap").invoke(null);
+            try {
+                bootstrap.getMethod("isBootstrapped").invoke(null);
+            } catch (NoSuchMethodException e) {
+                bootstrap.getMethod("bootStrap").invoke(null);
+            } catch (Throwable ignored) {
+                try {
+                    Object bootstrapped = bootstrap.getMethod("isBootstrapped").invoke(null);
+                    if (Boolean.FALSE.equals(bootstrapped)) {
+                        bootstrap.getMethod("bootStrap").invoke(null);
+                    }
+                } catch (Throwable ignored2) {}
+            }
         } catch (Throwable ignored) {}
     }
 
