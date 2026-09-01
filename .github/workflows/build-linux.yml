@@ -78,9 +78,11 @@ jobs:
       - name: Deploy and test Pumpkin DEV only
         env:
           VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
         run: |
           set -euo pipefail
-          scp artifact/rust/target/release/libpatchbukkit.so \
+          PORT="${VM_PORT:-2222}"
+          scp -P "$PORT" -o StrictHostKeyChecking=no artifact/rust/target/release/libpatchbukkit.so \
             artifact/java/patchbukkit/build/libs/patchbukkit.jar \
             artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar \
             '${{ secrets.VM_USER }}@139.99.121.15:/tmp/'
@@ -102,4 +104,4 @@ jobs:
             ghcr.io/ptero-eggs/yolks:java_25 \
             bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; test ${PIPESTATUS[0]} -eq 124'
           REMOTE
-          } | ssh '${{ secrets.VM_USER }}@139.99.121.15' 'sudo -S bash -s'
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no '${{ secrets.VM_USER }}@139.99.121.15' 'sudo -S bash -s'
