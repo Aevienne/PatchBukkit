@@ -25,18 +25,15 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Set up Java + Gradle cache
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
           cache: gradle
 
-      - name: Setup Gradle (enhanced cache, faster than setup-java alone)
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          cache-read-only: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/diag/playasia-jvm-core-dump' }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,45 +41,37 @@ jobs:
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Cache Rust (cargo registry + target)
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: linux-bridge
           cache-all-crates: true
-          cache-all-crates: true
           save-if: ${{ github.ref == 'refs/heads/diag/playasia-jvm-core-dump' || github.ref == 'refs/heads/master' }}
 
-      - name: Install protobuf + mold linker
+      - name: Install protobuf + mold
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler mold clang
           mold --version || true
-          clang --version | head -n 1
 
       - name: Build Java bridge
         working-directory: java
         run: ./gradlew --no-daemon --no-configuration-cache jar
 
-      - name: Build native bridge (sccache + mold, incremental)
+      - name: Build native bridge
         working-directory: rust
         env:
           CARGO_BUILD_JOBS: 2
           CARGO_PROFILE_RELEASE_LTO: 'false'
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
-          SCCACHE_GHA_ENABLED: "true"
-          RUSTC_WRAPPER: sccache
         run: |
           sccache --start-server || true
           cargo build --release --locked --jobs 2 --verbose
           sccache --show-stats || true
 
-      - name: Collect JVM diagnostics (hs_err, core)
+      - name: Collect diagnostics
         if: always()
         run: |
-          echo "=== Collecting JVM diagnostics ==="
-          ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err files at /tmp"
-          cat /tmp/hs_err*.log 2>&1 | head -n 500 || true
-          ls -lh /tmp/core* core* 2>&1 || echo "No core dumps"
           ls -lh java/patchbukkit/build/libs/ rust/target/release/libpatchbukkit.so 2>&1 || true
           sccache --show-stats || true
 
@@ -94,236 +83,4 @@ jobs:
             rust/target/release/libpatchbukkit.so
             java/patchbukkit/build/libs/patchbukkit.jar
             java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar
-          retention-days: 7
-
-      - name: Upload diagnostic artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: patchbukkit-diagnostics-${{ github.sha }}
-          if-no-files-found: ignore
-          path: |
-            /tmp/hs_err*.log
-            /tmp/core*
-            ./core*
-            /tmp/pumpkin*.log
-          retention-days: 7
-
-  deploy-dev:
-    needs: build
-    if: github.ref == 'refs/heads/diag/playasia-jvm-core-dump'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Download bridge artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: patchbukkit-linux-${{ github.sha }}
-          path: artifact
-
-      - name: Configure SSH
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
-
-      - name: Trust VM host key (auto-fix fingerprint vs key)
-        env:
-          VM_PORT: ${{ secrets.VM_PORT }}
-        run: |
-          mkdir -p ~/.ssh
-          # Secret may be full key (139.99.121.15 ssh-ed25519 AAAAC3...) or fingerprint (SHA256:...). Handle both.
-          if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
-            KEY="${{ secrets.VM_HOST_KEY }}"
-            if echo "$KEY" | grep -q "ssh-ed25519\|ssh-rsa\|ecdsa"; then
-              # Ensure it has hostname prefix for known_hosts
-              if echo "$KEY" | grep -q "139.99.121.15"; then
-                printf '%s\n' "$KEY" > ~/.ssh/known_hosts
-              else
-                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
-              fi
-              echo "using VM_HOST_KEY secret"
-            else
-              echo "VM_HOST_KEY looks like fingerprint, falling back to ssh-keyscan"
-              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
-            fi
-          else
-            echo "VM_HOST_KEY empty, using ssh-keyscan"
-            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
-          fi
-          # Always append a fresh keyscan as fallback (avoid MITM but allow rotation)
-          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
-          cat ~/.ssh/known_hosts
-          ssh-keygen -lf ~/.ssh/known_hosts || true
-
-      - name: Deploy via SSH (primary) with API fallback
-        id: deploy
-        env:
-          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
-          VM_PORT: ${{ secrets.VM_PORT }}
-          VM_USER: ${{ secrets.VM_USER }}
-          CALAGOPUS_API_KEY: ${{ secrets.CALAGOPUS_API_KEY }}
-          PLAYASIA_DISCORD_WEBHOOK: ${{ secrets.PLAYASIA_DISCORD_WEBHOOK }}
-        run: |
-          set -euo pipefail
-          PORT="${VM_PORT:-2222}"
-          echo "=== Attempt 1: SSH direct volume install (fast, will trigger Discord via schedules) ==="
-          set +e
-          scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-            artifact/rust/target/release/libpatchbukkit.so \
-            artifact/java/patchbukkit/build/libs/patchbukkit.jar \
-            artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar \
-            "${VM_USER}@139.99.121.15:/tmp/" 2>&1 | tee /tmp/scp.log
-          SCP_EXIT=${PIPESTATUS[0]}
-          if [ $SCP_EXIT -eq 0 ]; then
-            echo "SCP success, proceeding to volume install"
-          else
-            echo "SCP failed exit=$SCP_EXIT, attempting API fallback"
-            cat /tmp/scp.log || true
-            if [ -n "${CALAGOPUS_API_KEY:-}" ]; then
-              echo "API fallback: uploading via Wings signed URL (also posts Discord via deploy-notice)"
-              # Use panel Client API signed upload for each file (triggers file monitoring but not power watcher)
-              for f in artifact/rust/target/release/libpatchbukkit.so artifact/java/patchbukkit/build/libs/patchbukkit.jar; do
-                base=$(basename "$f")
-                # Map to panel paths
-                if [[ "$base" == "libpatchbukkit.so" ]]; then
-                  remote="/plugins/libpatchbukkit.so"
-                  dir="/plugins"
-                elif [[ "$base" == "patchbukkit.jar" ]]; then
-                  remote="/plugins/data/patchbukkit/jassets/patchbukkit.jar"
-                  dir="/plugins/data/patchbukkit/jassets"
-                else
-                  continue
-                fi
-                echo "Uploading $base via API to $dir"
-                # Get signed URL
-                SIGNED=$(curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" \
-                  "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/upload?directory=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$dir'))")")
-                URL=$(echo "$SIGNED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('attributes',{}).get('url',''))" 2>/dev/null || echo "")
-                if [ -n "$URL" ]; then
-                  curl -sS -X POST -H "Authorization: Bearer $CALAGOPUS_API_KEY" -F "files=@$f" "${URL}&directory=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$dir'))")" | head
-                  echo "API upload attempted for $base"
-                else
-                  echo "Failed to get signed URL for $base: $SIGNED"
-                  exit 1
-                fi
-              done
-              # Test plugin to patchbukkit dir via SCP still needed (no API upload for patchbukkit-plugins quirk) - try API write for it too
-              # Fallback: if API upload failed, mark deploy as failed
-              echo "API fallback completed"
-              exit 0
-            else
-              echo "No CALAGOPUS_API_KEY secret, cannot fallback to API"
-              exit 1
-            fi
-          fi
-          # SSH volume install
-          {
-            printf '%s\n' "$VM_SUDO_PASSWORD"
-            cat <<'REMOTE'
-          set -euo pipefail
-          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
-          # Verify uploaded files size
-          ls -lh /tmp/libpatchbukkit.so /tmp/patchbukkit.jar /tmp/patchbukkit-test-plugin.jar 2>&1 || echo "missing /tmp files"
-          du -h /tmp/libpatchbukkit.so 2>&1 || true
-          install -m 0755 /tmp/libpatchbukkit.so "$vol/plugins/libpatchbukkit.so"
-          install -m 0644 /tmp/patchbukkit.jar "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"
-          # Ensure patchbukkit-plugins dir exists (empty = success probe, or test plugin)
-          mkdir -p "$vol/patchbukkit/patchbukkit-plugins" "$vol/plugins/data/patchbukkit/jassets"
-          # Install test plugin if present (empty dir test uses quarantine, but deploy this for official test)
-          if [ -f /tmp/patchbukkit-test-plugin.jar ]; then
-            install -m 0644 /tmp/patchbukkit-test-plugin.jar "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || true
-            echo "test plugin installed"
-          fi
-          ls -lh "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1
-          cleanup() {
-            echo "cleanup: disabling bridge"
-            mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true
-            mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true
-          }
-          trap cleanup EXIT
-          # Full log capture without head truncation, with Discord-aware markers
-          set +e
-          # Write deploy start marker (like plugin-dev) for schedule janitor + host watcher
-          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:0:7}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
-          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full \
-            -v "$vol":/home/container -w /home/container \
-            ghcr.io/ptero-eggs/yolks:java_25 \
-            bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /tmp/pumpkin-exit-code.log; cat /tmp/pumpkin-patchbukkit-test.log'
-          PUMPKIN_EXIT=$(cat /tmp/pumpkin-exit-code.log 2>/dev/null || echo "unknown")
-          echo "Pumpkin exit: $PUMPKIN_EXIT"
-          echo "=== Full pumpkin output (no truncation) ==="
-          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 || echo "no log file"
-          echo "=== hs_err logs ==="
-          ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err in host /tmp"
-          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /tmp/hs_err*.log 2>&1; cat /tmp/hs_err*.log 2>&1 | head -n 1000; ls -lh /home/container/hs_err*.log 2>&1 || true; ls -lh core* /tmp/core* 2>&1 || echo "no core files"'
-          if command -v gdb >/dev/null 2>&1; then
-            echo "=== GDB host ==="
-            for core in "$vol"/core* /tmp/core* core; do [ -f "$core" ] && gdb -batch -ex "bt full" ./pumpkin "$core" 2>&1 | head -n 300 || true; done
-          else
-            docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'if command -v gdb >/dev/null 2>&1; then ls -lh core* /tmp/core* 2>&1; for c in core* /tmp/core*; do [ -f "$c" ] && gdb -batch -ex "bt full" ./pumpkin "$c" 2>&1 | head -n 300 || true; done; else echo "gdb not in container"; fi'
-          fi
-          echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true
-          # Post direct Discord summary (like plugin-dev deploy-notice) - best effort, schedules also handle crash janitor
-          if [ -n "${PLAYASIA_DISCORD_WEBHOOK:-}" ]; then
-            MSG=":package: [Pumpkin DEV] patchbukkit bridge $(date -u +%Y-%m-%dT%H:%M:%SZ) exit $PUMPKIN_EXIT by github-actions/${GITHUB_SHA:0:7}"
-            curl -sS -X POST -H "Content-Type: application/json" -d "{\"content\":\"$MSG\"}" "$PLAYASIA_DISCORD_WEBHOOK" || true
-          fi
-          # Copy diagnostics for artifact fetch
-          cp /tmp/pumpkin-patchbukkit-test.log /tmp/pumpkin-patchbukkit-full.log 2>&1 || true
-          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'cp /tmp/hs_err*.log /home/container/ 2>&1 || true; cp /tmp/pumpkin-patchbukkit-test.log /home/container/ 2>&1 || true; ls -lh /home/container/*.log /home/container/hs_err* 2>&1 || true'
-          test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
-          REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
-          SSH_EXIT=${PIPESTATUS[1]}
-          echo "SSH deploy exit=$SSH_EXIT"
-          exit $SSH_EXIT
-
-      - name: Fetch remote diagnostics (SSH primary, API fallback)
-        if: always()
-        env:
-          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
-          VM_PORT: ${{ secrets.VM_PORT }}
-          VM_USER: ${{ secrets.VM_USER }}
-          CALAGOPUS_API_KEY: ${{ secrets.CALAGOPUS_API_KEY }}
-        run: |
-          set -euo pipefail
-          PORT="${VM_PORT:-2222}"
-          mkdir -p diagnostics
-          set +e
-          {
-            printf '%s\n' "$VM_SUDO_PASSWORD"
-            cat <<'REMOTE'
-          set -euo pipefail
-          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
-          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log "$vol"/hs_err*.log "$vol"/pumpkin*.log 2>&1 || true
-          cat /tmp/hs_err*.log 2>&1 | head -n 1000 || true
-          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 | tail -n 500 || true
-          cat "$vol/.signals/.deploy-notice-*.json" 2>&1 | head -n 20 || true
-          REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote-diagnostics.log || echo "SSH diagnostics fetch failed, trying API"
-          # API fallback: fetch via Client API files/contents if SSH failed
-          if [ ! -s diagnostics/remote-diagnostics.log ] && [ -n "${CALAGOPUS_API_KEY:-}" ]; then
-            echo "Fetching via API"
-            curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/contents?file=%2F.logs%2Flatest.log" | tail -n 200 | tee diagnostics/api-latest.log || true
-          fi
-          set -e
-          scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/hs_err*.log" diagnostics/ 2>&1 || echo "no hs_err via SCP"
-          scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || echo "no pumpkin log via SCP"
-          # Also try API fetch for hs_err if SCP missed
-          if [ -n "${CALAGOPUS_API_KEY:-}" ]; then
-            for f in hs_err_pid*.log; do
-              curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/contents?file=%2Ftmp%2F$ f" -o "diagnostics/$f" 2>&1 || true
-            done
-          fi
-          ls -lh diagnostics/ 2>&1 || true
-
-      - name: Upload deploy diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: patchbukkit-deploy-diagnostics-${{ github.sha }}
-          if-no-files-found: ignore
-          path: |
-            diagnostics/
-            /tmp/hs_err*.log
           retention-days: 7
