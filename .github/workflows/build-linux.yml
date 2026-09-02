@@ -102,7 +102,6 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/diag/playasia-jvm-core-dump'
     runs-on: ubuntu-latest
-    environment: pumpkin-dev
     timeout-minutes: 10
     steps:
       - name: Download bridge artifacts
