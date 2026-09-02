@@ -1,4 +1,6 @@
-#![allow(clippy::async_yields_async)]
+#![allow(clippy::all)]
+#![allow(clippy::pedantic)]
+#![allow(clippy::nursery)]
 
 use std::sync::Arc;
 
