@@ -28,18 +28,23 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Download latest build artifact (if not provided)
+      - name: Download latest build artifact for ref
         uses: actions/download-artifact@v4
         with:
-          name: patchbukkit-linux-${{ github.sha }}
+          pattern: patchbukkit-linux-*
           path: artifact
-        continue-on-error: true
+          merge-multiple: true
 
       - name: Build if artifact missing
-        if: failure()
+        if: always()
         run: |
-          echo "No artifact for ${{ github.sha }}, building locally for deploy..."
-          sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          if [ -f "artifact/rust/target/release/libpatchbukkit.so" ] || [ -f "artifact/libpatchbukkit.so" ] || [ -f "rust/target/release/libpatchbukkit.so" ]; then
+            echo "Artifact found, skipping local build"
+            ls -lh artifact/rust/target/release/libpatchbukkit.so artifact/libpatchbukkit.so rust/target/release/libpatchbukkit.so 2>&1 | head -n 20 || true
+            exit 0
+          fi
+          echo "No artifact for ${{ inputs.ref }}, building locally for deploy..."
+          sudo apt-get update && sudo apt-get install -y protobuf-compiler mold clang
           ./java/gradlew --no-daemon jar --project-dir java
           cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml
 
@@ -81,12 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${VM_PORT:-2222}"
-          ART_SO="artifact/rust/target/release/libpatchbukkit.so"
-          ART_JAR="artifact/java/patchbukkit/build/libs/patchbukkit.jar"
-          ART_TEST="artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar"
-          # Fallback to rust/target if built locally
-          [ -f "$ART_SO" ] || ART_SO="rust/target/release/libpatchbukkit.so"
-          [ -f "$ART_JAR" ] || ART_JAR="java/patchbukkit/build/libs/patchbukkit.jar"
+          # Find artifacts in multiple possible locations (pattern download flattens vs preserves path)
+          for cand in "artifact/rust/target/release/libpatchbukkit.so" "artifact/libpatchbukkit.so" "rust/target/release/libpatchbukkit.so"; do [ -f "$cand" ] && ART_SO="$cand" && break; done
+          for cand in "artifact/java/patchbukkit/build/libs/patchbukkit.jar" "artifact/patchbukkit.jar" "java/patchbukkit/build/libs/patchbukkit.jar"; do [ -f "$cand" ] && ART_JAR="$cand" && break; done
+          for cand in "artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar" "artifact/patchbukkit-test-plugin.jar"; do [ -f "$cand" ] && ART_TEST="$cand" && break; done
+          ART_SO="${ART_SO:-artifact/rust/target/release/libpatchbukkit.so}"
+          ART_JAR="${ART_JAR:-artifact/java/patchbukkit/build/libs/patchbukkit.jar}"
           echo "Artifacts: $ART_SO ($([ -f "$ART_SO" ] && stat -c%s "$ART_SO" || echo missing)) $ART_JAR"
           set +e
           scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
