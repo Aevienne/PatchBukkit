@@ -284,15 +284,19 @@ impl JvmWorker {
             .collect::<Vec<_>>()
             .join(separator);
 
+        tracing::info!("JVM classpath: {}", classpath);
+        tracing::info!("Creating JVM with minimal args for Java 25 compat (jni crate max is V21, V25 target remains compatible)");
+
         let jvm_args = InitArgsBuilder::new()
+            // jni crate has no V25 — V21 is max; Java 25 runtime is backwards compatible
             .version(JNIVersion::V21)
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
+            .option("-XX:ErrorFile=/tmp/hs_err_%p.log")
+            .option("-XX:+CrashOnOutOfMemoryError")
             .option("--enable-native-access=ALL-UNNAMED")
-            .option("--enable-final-field-mutation=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
-            .option("-Dcom.google.protobuf.useUnsafe=false")
+            .option("-Djoml.nounsafe=true")
+            .option("-Dorg.joml.nounsafe=true")
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build JVM init args: {e:?}"))?;
 
@@ -300,7 +304,7 @@ impl JvmWorker {
             JavaVM::new(jvm_args).map_err(|e| anyhow::anyhow!("Failed to create JavaVM: {e:?}"))?;
         let jvm = Arc::new(jvm);
 
-        jvm.attach_current_thread(|env| -> anyhow::Result<()> {
+        let init_result = jvm.attach_current_thread(|env| -> anyhow::Result<()> {
             initialize_callbacks(env).map_err(|e| {
                 tracing::error!("Failed to initialize callbacks: {e:?}");
                 e
@@ -308,12 +312,21 @@ impl JvmWorker {
 
             setup_patchbukkit_server(env).map_err(|e| {
                 tracing::error!("Failed to setup PatchBukkit server: {e:?}");
+                if env.exception_check() {
+                    env.exception_describe();
+                    env.exception_clear();
+                }
                 e
             })?;
 
             Ok(())
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
+        });
+
+        if let Err(e) = &init_result {
+            tracing::error!("JVM initialization attach failed: {e:?}");
+        }
+        init_result
+            .map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
 
         self.jvm = Some(jvm);
 

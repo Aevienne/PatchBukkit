@@ -1,0 +1,186 @@
+name: Build Linux bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feat/**'
+      - 'diag/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-provider: buildjet
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build Java bridge
+        working-directory: java
+        run: ./gradlew --no-daemon --no-configuration-cache jar
+
+      - name: Build native bridge
+        working-directory: rust
+        env:
+          CARGO_BUILD_JOBS: 2
+          CARGO_PROFILE_RELEASE_LTO: 'false'
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+        run: cargo build --release --jobs 2
+
+      - name: Collect JVM diagnostics (hs_err, core)
+        if: always()
+        run: |
+          echo "=== Collecting JVM diagnostics ==="
+          ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err files at /tmp"
+          cat /tmp/hs_err*.log 2>&1 | head -n 500 || true
+          ls -lh /tmp/core* core* 2>&1 || echo "No core dumps"
+          ls -lh java/patchbukkit/build/libs/ rust/target/release/libpatchbukkit.so 2>&1 || true
+
+      - name: Upload bridge artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: patchbukkit-linux-${{ github.sha }}
+          path: |
+            rust/target/release/libpatchbukkit.so
+            java/patchbukkit/build/libs/patchbukkit.jar
+            java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar
+
+      - name: Upload diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patchbukkit-diagnostics-${{ github.sha }}
+          if-no-files-found: ignore
+          path: |
+            /tmp/hs_err*.log
+            /tmp/core*
+            ./core*
+            /tmp/pumpkin*.log
+
+  deploy-dev:
+    needs: build
+    if: github.ref == 'refs/heads/diag/playasia-jvm-core-dump'
+    runs-on: ubuntu-latest
+    environment: pumpkin-dev
+    steps:
+      - name: Download bridge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: patchbukkit-linux-${{ github.sha }}
+          path: artifact
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Trust VM host key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' '${{ secrets.VM_HOST_KEY }}' > ~/.ssh/known_hosts
+
+      - name: Deploy and test Pumpkin DEV only
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          set -euo pipefail
+          PORT="${VM_PORT:-2222}"
+          scp -P "$PORT" -o StrictHostKeyChecking=no artifact/rust/target/release/libpatchbukkit.so \
+            artifact/java/patchbukkit/build/libs/patchbukkit.jar \
+            artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar \
+            '${{ secrets.VM_USER }}@139.99.121.15:/tmp/'
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          set -euo pipefail
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          install -m 0755 /tmp/libpatchbukkit.so "$vol/plugins/libpatchbukkit.so"
+          install -m 0644 /tmp/patchbukkit.jar "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"
+          install -m 0644 /tmp/patchbukkit-test-plugin.jar "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar"
+          cleanup() {
+            mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true
+            mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true
+          }
+          trap cleanup EXIT
+          # Full log capture without head truncation
+          set +e
+          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full \
+            -v "$vol":/home/container -w /home/container \
+            ghcr.io/ptero-eggs/yolks:java_25 \
+            bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /tmp/pumpkin-exit-code.log; cat /tmp/pumpkin-patchbukkit-test.log'
+          PUMPKIN_EXIT=$(cat /tmp/pumpkin-exit-code.log 2>/dev/null || echo "unknown")
+          echo "Pumpkin exit: $PUMPKIN_EXIT"
+          echo "=== Full pumpkin output (no truncation) ==="
+          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 || echo "no log file"
+          echo "=== hs_err logs ==="
+          ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err in host /tmp"
+          # Check inside volume/container tmp and hs_err
+          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /tmp/hs_err*.log 2>&1; cat /tmp/hs_err*.log 2>&1 | head -n 1000; ls -lh /home/container/hs_err*.log 2>&1 || true; ls -lh core* /tmp/core* 2>&1 || echo "no core files"'
+          # GDB backtrace if available and core exists
+          if command -v gdb >/dev/null 2>&1; then
+            echo "=== GDB available — attempting backtrace ==="
+            for core in "$vol"/core* /tmp/core* core; do
+              [ -f "$core" ] && gdb -batch -ex "bt full" ./pumpkin "$core" 2>&1 | head -n 300 || true
+            done
+          else
+            echo "gdb not available on host"
+            docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'if command -v gdb >/dev/null 2>&1; then echo "gdb available in container"; ls -lh core* /tmp/core* 2>&1; for c in core* /tmp/core*; do [ -f "$c" ] && gdb -batch -ex "bt full" ./pumpkin "$c" 2>&1 | head -n 300 || true; done; else echo "gdb not in container"; fi'
+          fi
+          # Save diagnostics to host /tmp for scp retrieval
+          cp /tmp/pumpkin-patchbukkit-test.log /tmp/pumpkin-patchbukkit-full.log 2>&1 || true
+          cp /tmp/hs_err*.log /tmp/ 2>&1 || true
+          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'cp /tmp/hs_err*.log /home/container/ 2>&1 || true; cp /tmp/pumpkin-patchbukkit-test.log /home/container/ 2>&1 || true'
+          # Expect timeout 124 as success sentinel (pumpkin ran for 30s)
+          test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
+          REMOTE
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no '${{ secrets.VM_USER }}@139.99.121.15' 'sudo -S bash -s'
+
+      - name: Fetch remote diagnostics
+        if: always()
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          set -euo pipefail
+          PORT="${VM_PORT:-2222}"
+          mkdir -p diagnostics
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          set -euo pipefail
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log "$vol"/hs_err*.log "$vol"/pumpkin*.log 2>&1 || true
+          cat /tmp/hs_err*.log 2>&1 | head -n 1000 || true
+          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 | tail -n 500 || true
+          REMOTE
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no '${{ secrets.VM_USER }}@139.99.121.15' 'sudo -S bash -s' | tee diagnostics/remote-diagnostics.log
+          scp -P "$PORT" -o StrictHostKeyChecking=no '${{ secrets.VM_USER }}@139.99.121.15:/tmp/hs_err*.log' diagnostics/ 2>&1 || echo "no hs_err to fetch"
+          scp -P "$PORT" -o StrictHostKeyChecking=no '${{ secrets.VM_USER }}@139.99.121.15:/tmp/pumpkin-patchbukkit-test.log' diagnostics/ 2>&1 || echo "no pumpkin log to fetch"
+
+      - name: Upload deploy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patchbukkit-deploy-diagnostics-${{ github.sha }}
+          if-no-files-found: ignore
+          path: |
+            diagnostics/
+            /tmp/hs_err*.log
