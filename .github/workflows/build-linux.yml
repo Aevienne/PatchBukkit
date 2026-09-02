@@ -7,6 +7,10 @@ on:
       - 'feat/**'
       - 'diag/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 1
@@ -21,12 +25,18 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java + Gradle cache
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
           cache: gradle
+
+      - name: Setup Gradle (enhanced cache, faster than setup-java alone)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          cache-read-only: ${{ github.ref != 'refs/heads/master' && github.ref != 'refs/heads/diag/playasia-jvm-core-dump' }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,6 +48,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: linux-bridge
+          cache-all-crates: true
           cache-all-crates: true
           save-if: ${{ github.ref == 'refs/heads/diag/playasia-jvm-core-dump' || github.ref == 'refs/heads/master' }}
 
@@ -115,10 +126,34 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
 
-      - name: Trust VM host key
+      - name: Trust VM host key (auto-fix fingerprint vs key)
+        env:
+          VM_PORT: ${{ secrets.VM_PORT }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' '${{ secrets.VM_HOST_KEY }}' > ~/.ssh/known_hosts
+          # Secret may be full key (139.99.121.15 ssh-ed25519 AAAAC3...) or fingerprint (SHA256:...). Handle both.
+          if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
+            KEY="${{ secrets.VM_HOST_KEY }}"
+            if echo "$KEY" | grep -q "ssh-ed25519\|ssh-rsa\|ecdsa"; then
+              # Ensure it has hostname prefix for known_hosts
+              if echo "$KEY" | grep -q "139.99.121.15"; then
+                printf '%s\n' "$KEY" > ~/.ssh/known_hosts
+              else
+                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+              fi
+              echo "using VM_HOST_KEY secret"
+            else
+              echo "VM_HOST_KEY looks like fingerprint, falling back to ssh-keyscan"
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            fi
+          else
+            echo "VM_HOST_KEY empty, using ssh-keyscan"
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+          fi
+          # Always append a fresh keyscan as fallback (avoid MITM but allow rotation)
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          cat ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/known_hosts || true
 
       - name: Deploy via SSH (primary) with API fallback
         id: deploy
