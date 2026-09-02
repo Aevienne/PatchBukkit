@@ -285,12 +285,15 @@ impl JvmWorker {
             .join(separator);
 
         tracing::info!("JVM classpath: {}", classpath);
-        tracing::info!("Creating JVM with minimal args for Java 25 compat");
+        tracing::info!("Creating JVM with minimal args for Java 25 compat (jni crate max is V21, V25 target remains compatible)");
+
         let jvm_args = InitArgsBuilder::new()
+            // jni crate has no V25 — V21 is max; Java 25 runtime is backwards compatible
             .version(JNIVersion::V21)
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("-XX:ErrorFile=/tmp/hs_err_%p.log")
+            .option("-XX:+CrashOnOutOfMemoryError")
             .option("--enable-native-access=ALL-UNNAMED")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
@@ -322,7 +325,8 @@ impl JvmWorker {
         if let Err(e) = &init_result {
             tracing::error!("JVM initialization attach failed: {e:?}");
         }
-        init_result.map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
+        init_result
+            .map_err(|e| anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}"))?;
 
         self.jvm = Some(jvm);
 

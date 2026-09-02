@@ -184,24 +184,39 @@ public class PatchBukkitServer implements Server {
 
     static {
         try {
-            Class<?> sharedConstants = Class.forName("net.minecraft.SharedConstants");
             try {
+                Class<?> sharedConstants = Class.forName("net.minecraft.SharedConstants");
                 sharedConstants.getMethod("tryDetectVersion").invoke(null);
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) {
+                System.err.println("[PatchBukkit] SharedConstants.tryDetectVersion failed: " + t);
+                logger.log(Level.WARNING, "SharedConstants.tryDetectVersion failed", t);
+            }
             Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
             try {
-                bootstrap.getMethod("isBootstrapped").invoke(null);
+                Object bootstrapped = bootstrap.getMethod("isBootstrapped").invoke(null);
+                if (Boolean.FALSE.equals(bootstrapped)) {
+                    bootstrap.getMethod("bootStrap").invoke(null);
+                }
             } catch (NoSuchMethodException e) {
+                // Older mappings without isBootstrapped — bootstrap unconditionally
                 bootstrap.getMethod("bootStrap").invoke(null);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                System.err.println("[PatchBukkit] Bootstrap check failed: " + t);
+                logger.log(Level.SEVERE, "Bootstrap check failed", t);
                 try {
                     Object bootstrapped = bootstrap.getMethod("isBootstrapped").invoke(null);
                     if (Boolean.FALSE.equals(bootstrapped)) {
                         bootstrap.getMethod("bootStrap").invoke(null);
                     }
-                } catch (Throwable ignored2) {}
+                } catch (Throwable t2) {
+                    System.err.println("[PatchBukkit] Bootstrap retry failed: " + t2);
+                    logger.log(Level.SEVERE, "Bootstrap retry failed", t2);
+                }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            System.err.println("[PatchBukkit] Bootstrap initialization failed: " + t);
+            logger.log(Level.SEVERE, "Bootstrap initialization failed", t);
+        }
     }
 
     public static PatchBukkitServer initServer() {
