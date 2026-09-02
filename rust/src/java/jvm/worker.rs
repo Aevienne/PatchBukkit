@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use std::{path::PathBuf, sync::Arc};
 
 use jni::{Env, InitArgsBuilder, JNIVersion, JavaVM};
