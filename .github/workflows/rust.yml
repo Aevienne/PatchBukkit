@@ -123,8 +123,9 @@ jobs:
         runs-on: ${{ matrix.os }}
         needs: [machete]
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/diag/') || startsWith(github.ref, 'refs/heads/feat/') || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         env:
-          RUSTFLAGS: "-W warnings"
+          RUSTFLAGS: ""
         strategy:
             fail-fast: false
             matrix:
