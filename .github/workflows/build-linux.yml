@@ -6,6 +6,7 @@ on:
     branches:
       - 'feat/**'
       - 'diag/**'
+    paths: ['rust/**', 'java/**', 'proto/**', 'Cargo.*', '.github/workflows/build-linux.yml']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
