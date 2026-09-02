@@ -284,23 +284,15 @@ impl JvmWorker {
             .collect::<Vec<_>>()
             .join(separator);
 
+        tracing::info!("JVM classpath: {}", classpath);
+        tracing::info!("Creating JVM with minimal args for Java 25 compat");
         let jvm_args = InitArgsBuilder::new()
             .version(JNIVersion::V21)
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("-XX:ErrorFile=/tmp/hs_err_%p.log")
-            .option("--enable-native-access=ALL-UNNAMED")
-            .option("--enable-final-field-mutation=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.lang=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
-            .option("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
-            .option("--add-opens=java.base/sun.nio.ch=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.io=ALL-UNNAMED")
-            .option("--add-opens=java.base/java.util=ALL-UNNAMED")
-            .option("-Dcom.google.protobuf.useUnsafe=false")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
-            .option("-Dorg.lwjgl.util.NoChecks=true")
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build JVM init args: {e:?}"))?;
 
