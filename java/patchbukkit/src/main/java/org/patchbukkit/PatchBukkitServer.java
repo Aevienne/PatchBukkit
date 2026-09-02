@@ -189,7 +189,7 @@ public class PatchBukkitServer implements Server {
                 sharedConstants.getMethod("tryDetectVersion").invoke(null);
             } catch (Throwable t) {
                 System.err.println("[PatchBukkit] SharedConstants.tryDetectVersion failed: " + t);
-                logger.log(Level.WARNING, "SharedConstants.tryDetectVersion failed", t);
+                t.printStackTrace(System.err);
             }
             Class<?> bootstrap = Class.forName("net.minecraft.server.Bootstrap");
             try {
@@ -202,7 +202,7 @@ public class PatchBukkitServer implements Server {
                 bootstrap.getMethod("bootStrap").invoke(null);
             } catch (Throwable t) {
                 System.err.println("[PatchBukkit] Bootstrap check failed: " + t);
-                logger.log(Level.SEVERE, "Bootstrap check failed", t);
+                t.printStackTrace(System.err);
                 try {
                     Object bootstrapped = bootstrap.getMethod("isBootstrapped").invoke(null);
                     if (Boolean.FALSE.equals(bootstrapped)) {
@@ -210,12 +210,12 @@ public class PatchBukkitServer implements Server {
                     }
                 } catch (Throwable t2) {
                     System.err.println("[PatchBukkit] Bootstrap retry failed: " + t2);
-                    logger.log(Level.SEVERE, "Bootstrap retry failed", t2);
+                    t2.printStackTrace(System.err);
                 }
             }
         } catch (Throwable t) {
             System.err.println("[PatchBukkit] Bootstrap initialization failed: " + t);
-            logger.log(Level.SEVERE, "Bootstrap initialization failed", t);
+            t.printStackTrace(System.err);
         }
     }
 
