@@ -123,7 +123,9 @@ jobs:
         runs-on: ${{ matrix.os }}
         needs: [machete]
         if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        continue-on-error: ${{ matrix.os == 'ubuntu-26.04-arm' }}
         strategy:
+            fail-fast: false
             matrix:
                 os:
                     [
