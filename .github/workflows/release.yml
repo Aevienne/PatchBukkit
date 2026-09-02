@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*', 'nightly']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (default: nightly)'
+        required: false
+        default: 'nightly'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build JAR
+        run: ./gradlew jar
+        working-directory: java
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Linux so
+        run: cargo build --release --locked --verbose
+        working-directory: rust
+        env:
+          RUSTFLAGS: ""
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+      - name: Prepare dist
+        run: |
+          mkdir -p dist
+          cp rust/target/release/libpatchbukkit.so dist/ 2>/dev/null || cp rust/target/release/*.so dist/ 2>/dev/null || true
+          cp java/patchbukkit/build/libs/patchbukkit.jar dist/ 2>/dev/null || true
+          ls -lh dist/
+      - name: Create Release (like upstream nightly, but with .so + .jar listed individually)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: Release ${{ inputs.tag || github.ref_name }}
+          prerelease: true
+          generate_release_notes: true
+          files: dist/*
