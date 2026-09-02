@@ -1,0 +1,165 @@
+name: Deploy to Pumpkin DEV
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy (branch, tag, or SHA) — defaults to diag/playasia-jvm-core-dump'
+        required: false
+        default: 'diag/playasia-jvm-core-dump'
+      skip_test:
+        description: 'Skip 30s pumpkin test (only install libs)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-pumpkin-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Manual only — does NOT run on push, so builds can validate first without stalling calagopus IO
+    # Trigger via: Actions → Deploy to Pumpkin DEV → Run workflow
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download latest build artifact (if not provided)
+        uses: actions/download-artifact@v4
+        with:
+          name: patchbukkit-linux-${{ github.sha }}
+          path: artifact
+        continue-on-error: true
+
+      - name: Build if artifact missing
+        if: failure()
+        run: |
+          echo "No artifact for ${{ github.sha }}, building locally for deploy..."
+          sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          ./java/gradlew --no-daemon jar --project-dir java
+          cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Trust VM host key
+        env:
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
+            KEY="${{ secrets.VM_HOST_KEY }}"
+            if echo "$KEY" | grep -q "ssh-"; then
+              if echo "$KEY" | grep -q "139.99.121.15"; then
+                printf '%s\n' "$KEY" > ~/.ssh/known_hosts
+              else
+                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+              fi
+            else
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            fi
+          else
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+          fi
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          cat ~/.ssh/known_hosts
+          ssh-keygen -lf ~/.ssh/known_hosts || true
+
+      - name: Deploy to Pumpkin DEV (SSH primary, API fallback)
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+          CALAGOPUS_API_KEY: ${{ secrets.CALAGOPUS_API_KEY }}
+          PLAYASIA_DISCORD_WEBHOOK: ${{ secrets.PLAYASIA_DISCORD_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          PORT="${VM_PORT:-2222}"
+          ART_SO="artifact/rust/target/release/libpatchbukkit.so"
+          ART_JAR="artifact/java/patchbukkit/build/libs/patchbukkit.jar"
+          ART_TEST="artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar"
+          # Fallback to rust/target if built locally
+          [ -f "$ART_SO" ] || ART_SO="rust/target/release/libpatchbukkit.so"
+          [ -f "$ART_JAR" ] || ART_JAR="java/patchbukkit/build/libs/patchbukkit.jar"
+          echo "Artifacts: $ART_SO ($([ -f "$ART_SO" ] && stat -c%s "$ART_SO" || echo missing)) $ART_JAR"
+          set +e
+          scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            "$ART_SO" "$ART_JAR" ${ART_TEST:+$ART_TEST} \
+            "${VM_USER}@139.99.121.15:/tmp/" 2>&1 | tee /tmp/scp.log
+          SCP_EXIT=${PIPESTATUS[0]}
+          if [ $SCP_EXIT -ne 0 ]; then
+            echo "SCP failed $SCP_EXIT, API fallback for jars <100MB only"
+            cat /tmp/scp.log || true
+            if [ -n "${CALAGOPUS_API_KEY:-}" ] && [ -f "$ART_JAR" ]; then
+              SIGNED=$(curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/upload?directory=%2Fplugins%2Fdata%2Fpatchbukkit%2Fjassets")
+              URL=$(echo "$SIGNED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('attributes',{}).get('url',''))" 2>/dev/null || echo "")
+              [ -n "$URL" ] && curl -sS -X POST -H "Authorization: Bearer $CALAGOPUS_API_KEY" -F "files=@$ART_JAR" "${URL}&directory=%2Fplugins%2Fdata%2Fpatchbukkit%2Fjassets" | head || echo "API fallback failed"
+            fi
+            [ $SCP_EXIT -eq 0 ] || exit 1
+          fi
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          set -euo pipefail
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          ls -lh /tmp/libpatchbukkit.so /tmp/patchbukkit.jar 2>&1 || echo "missing /tmp"
+          install -m 0755 /tmp/libpatchbukkit.so "$vol/plugins/libpatchbukkit.so"
+          install -m 0644 /tmp/patchbukkit.jar "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"
+          mkdir -p "$vol/patchbukkit/patchbukkit-plugins" "$vol/plugins/data/patchbukkit/jassets"
+          [ -f /tmp/patchbukkit-test-plugin.jar ] && install -m 0644 /tmp/patchbukkit-test-plugin.jar "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || true
+          ls -lh "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1
+          cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
+          trap cleanup EXIT
+          if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; exit 0; fi
+          set +e
+          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:0:7}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
+          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /tmp/pumpkin-exit-code.log; cat /tmp/pumpkin-patchbukkit-test.log'
+          PUMPKIN_EXIT=$(cat /tmp/pumpkin-exit-code.log 2>/dev/null || echo "unknown")
+          echo "Pumpkin exit: $PUMPKIN_EXIT"
+          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 || true
+          ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err host"
+          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /tmp/hs_err*.log 2>&1; cat /tmp/hs_err*.log 2>&1 | head -n 1000; ls -lh /home/container/hs_err*.log 2>&1 || true'
+          echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true
+          if [ -n "${PLAYASIA_DISCORD_WEBHOOK:-}" ]; then MSG=":package: [Pumpkin DEV] patchbukkit $(date -u +%Y-%m-%dT%H:%M:%SZ) exit $PUMPKIN_EXIT by github-actions/${GITHUB_SHA:0:7}"; curl -sS -X POST -H "Content-Type: application/json" -d "{\"content\":\"$MSG\"}" "$PLAYASIA_DISCORD_WEBHOOK" || true; fi
+          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'cp /tmp/hs_err*.log /home/container/ 2>&1 || true; cp /tmp/pumpkin-patchbukkit-test.log /home/container/ 2>&1 || true'
+          test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
+          REMOTE
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
+          echo "SSH deploy exit=${PIPESTATUS[1]}"
+
+      - name: Fetch diagnostics
+        if: always()
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          set -euo pipefail
+          PORT="${VM_PORT:-2222}"
+          mkdir -p diagnostics
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log "$vol"/hs_err*.log 2>&1 || true
+          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 | tail -n 500 || true
+          REMOTE
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote.log || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || echo "no log via SCP"
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/hs_err*.log" diagnostics/ 2>&1 || true
+          ls -lh diagnostics/ || true
+
+      - name: Upload deploy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patchbukkit-deploy-diagnostics-${{ github.sha }}
+          if-no-files-found: ignore
+          path: diagnostics/
+          retention-days: 7
