@@ -20,6 +20,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     # Manual only — does NOT run on push, so builds can validate first without stalling calagopus IO
     # Trigger via: Actions → Deploy to Pumpkin DEV → Run workflow
     steps:
@@ -39,6 +42,22 @@ jobs:
           merge-multiple: true
           if_no_artifact_found: warn
 
+      - name: Set up Java for fallback build
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Setup Gradle for fallback
+        if: always()
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Rust for fallback
+        if: always()
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Build if artifact missing
         if: always()
         run: |
@@ -49,9 +68,6 @@ jobs:
           fi
           echo "No artifact for ${{ inputs.ref }}, building locally for deploy..."
           sudo apt-get update && sudo apt-get install -y protobuf-compiler mold clang
-          echo "Using Java 25 for local build (paperweight requires 21+)"
-          # Use setup-java's cached JDK if available, else fallback to default 25
-          if [ -n "$JAVA_HOME_25_X64" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
           java -version 2>&1 | head -n 1
           ./java/gradlew --no-daemon jar --project-dir java
           cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml
