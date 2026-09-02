@@ -324,11 +324,11 @@ impl JvmWorker {
             Ok(())
         });
 
-        if let Err(e) = &init_result {
-            tracing::error!("JVM initialization attach failed: {e:?}");
+        if let Err(err) = init_result.as_ref() {
+            tracing::error!("JVM initialization attach failed: {err:?}");
         }
-        init_result.map_err(|e| {
-            anyhow::anyhow!("Failed to attach thread for JVM initialization: {e:?}")
+        init_result.map_err(|err| {
+            anyhow::anyhow!("Failed to attach thread for JVM initialization: {err:?}")
         })?;
 
         self.jvm = Some(jvm);
