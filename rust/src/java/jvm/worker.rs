@@ -291,6 +291,7 @@ impl JvmWorker {
             .option(format!("-Djava.class.path={classpath}"))
             .option("-XX:+IgnoreUnrecognizedVMOptions")
             .option("-XX:ErrorFile=/tmp/hs_err_%p.log")
+            .option("--enable-native-access=ALL-UNNAMED")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
             .build()
