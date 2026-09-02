@@ -29,11 +29,15 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Download latest build artifact for ref
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
-          pattern: patchbukkit-linux-*
+          workflow: build-linux.yml
+          branch: ${{ inputs.ref }}
+          name: patchbukkit-linux-*
+          name_is_regexp: true
           path: artifact
           merge-multiple: true
+          if_no_artifact_found: warn
 
       - name: Build if artifact missing
         if: always()
@@ -45,6 +49,10 @@ jobs:
           fi
           echo "No artifact for ${{ inputs.ref }}, building locally for deploy..."
           sudo apt-get update && sudo apt-get install -y protobuf-compiler mold clang
+          echo "Using Java 25 for local build (paperweight requires 21+)"
+          # Use setup-java's cached JDK if available, else fallback to default 25
+          if [ -n "$JAVA_HOME_25_X64" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
+          java -version 2>&1 | head -n 1
           ./java/gradlew --no-daemon jar --project-dir java
           cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml
 
