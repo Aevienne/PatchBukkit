@@ -354,7 +354,11 @@ jobs:
           test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
           REMOTE
           } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
-          echo "SSH deploy exit=${PIPESTATUS[1]}"
+          SSH_EXIT=${PIPESTATUS[1]:-1}
+          echo "SSH deploy exit=$SSH_EXIT"
+          # Propagate remote failure (e.g. pumpkin test exit 139): without this
+          # the step stays green because echo above resets the status.
+          exit $SSH_EXIT
 
       - name: Fetch diagnostics
         if: always()

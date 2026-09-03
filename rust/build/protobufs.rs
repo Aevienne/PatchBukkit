@@ -106,6 +106,8 @@ pub unsafe extern "C" fn {fn_name}(
     output_len: *mut usize,
 ) -> *mut u8 {{
     use prost::Message;
+    // Unbuffered stderr marker: survives SIGSEGV (stdout via pipe is block-buffered and lost)
+    eprintln!("[patchbukkit-ffi] ENTRY {fn_name} ptr={{:?}} len={{}}", input_ptr, input_len);
     if input_ptr.is_null() {{
         tracing::warn!("{fn_name}: null input (ptr={{:?}}, len={{}})", input_ptr, input_len);
         unsafe {{ *output_len = 0 }};
@@ -127,6 +129,7 @@ pub unsafe extern "C" fn {fn_name}(
     }};
     let encoded = response.encode_to_vec().into_boxed_slice();
     let len = encoded.len();
+    eprintln!("[patchbukkit-ffi] EXIT {fn_name} out_len={{}}", len);
     unsafe {{ *output_len = len }};
     Box::into_raw(encoded) as *mut u8
 }}
