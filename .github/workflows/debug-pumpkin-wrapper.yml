@@ -68,7 +68,8 @@ jobs:
           #!/bin/bash
           export RUST_BACKTRACE=full
           export RUST_LOG=debug
-          export PATCHBUKKIT_SKIP_BOOTSTRAP=1
+          # PATCHBUKKIT_SKIP_BOOTSTRAP removed 2026-09-03: JVM bootstrap hardened
+          # (8MiB worker stack, Xss2m, jna.tmpdir, heap cap) - real Bootstrap path live
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
           # yolks:java_25 runs as container user without sudo/gdb: skip apt attempts, run direct
