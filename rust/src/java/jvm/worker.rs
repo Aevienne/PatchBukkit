@@ -299,10 +299,12 @@ impl JvmWorker {
             .option("-XX:HeapDumpPath=/home/container/")
             .option("-XX:+CrashOnOutOfMemoryError")
             .option("--enable-native-access=ALL-UNNAMED")
-            // Avoid JNA native dispatch crash in Bootstrap (LinuxNuma -> System.load segfault):
-            // disable Paper concurrentutil NUMA path and extract JNA to volume cache, not /tmp
-            .option("-Dca.spottedleaf.concurrentutil.numa.disabled=true")
+            // Avoid first-heavy-native-load (JNA dispatch via LinuxNuma during
+            // Bootstrap) dying on /tmp restrictions: extract JNA to volume cache
             .option("-Djna.tmpdir=/home/container/.cache/jna")
+            // Cap Paper worker threads for the small DEV container (read by
+            // net.minecraft.util.Util.getMaxThreads; default NUMA probing stays)
+            .option("-DPaper.WorkerThreadCount=4")
             .option("-Dfile.encoding=UTF-8")
             // Bootstrap does deep registry init on this thread; give it headroom
             .option("-Xss2m")
