@@ -68,14 +68,23 @@ jobs:
           #!/bin/bash
           export RUST_BACKTRACE=full
           export RUST_LOG=debug
-          export RUST_LIB_BACKTRACE=1
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          ./pumpkin.real "$@" > >(tee -a "$LOG" | tee -a /home/container/logs/latest.log) 2>&1; EC=${PIPESTATUS[0]}
+          # Try gdb for segfault backtrace if available, else direct
+          if ! command -v gdb >/dev/null 2>&1; then
+            echo "[wrapper] gdb not found, attempting apt-get install..." | tee -a "$LOG"
+            apt-get update > /tmp/gdb-apt.log 2>&1 && apt-get install -y gdb --no-install-recommends >> /tmp/gdb-apt.log 2>&1 || echo "[wrapper] gdb install failed" | tee -a "$LOG"
+          fi
+          if command -v gdb >/dev/null 2>&1; then
+            echo "[wrapper] running under gdb" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
+            gdb -batch -ex "run" -ex "bt full" -ex "thread apply all bt" --args ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
+          else
+            echo "[wrapper] gdb not available, direct run" | tee -a "$LOG"
+            ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
+          fi
           echo "[wrapper] exit $EC" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          # also capture hs_err if any
-          for f in /tmp/hs_err*.log /home/container/hs_err*.log; do [ -f "$f" ] && cp -a "$f" /home/container/ 2>/dev/null || true; done
-          cat "$LOG" 2>&1 | tail -n 200 | tee -a /home/container/logs/latest.log || true
+          for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -f "$f" ] && cp -a "$f" /home/container/ 2>/dev/null || true; done
+          tail -n 300 "$LOG" | tee -a /home/container/logs/latest.log || true
           exit $EC
           WRAPPER
             chmod +x "$vol/pumpkin.wrapper"
