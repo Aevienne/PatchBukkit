@@ -341,15 +341,16 @@ jobs:
           if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; exit 0; fi
           set +e
           echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:0:7}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
-          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 30 ./pumpkin 2>&1 | tee /tmp/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /tmp/pumpkin-exit-code.log; cat /tmp/pumpkin-patchbukkit-test.log'
-          PUMPKIN_EXIT=$(cat /tmp/pumpkin-exit-code.log 2>/dev/null || echo "unknown")
+          docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -e RUST_LOG=debug -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 90 ./pumpkin 2>&1 | tee /home/container/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /home/container/pumpkin-exit-code.log; cat /home/container/pumpkin-patchbukkit-test.log'
+          PUMPKIN_EXIT=$(cat "$vol/pumpkin-exit-code.log" 2>/dev/null || echo "unknown")
           echo "Pumpkin exit: $PUMPKIN_EXIT"
-          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 || true
+          cat "$vol/pumpkin-patchbukkit-test.log" 2>&1 || true
+          ls -lh "$vol"/hs_err*.log 2>&1 || echo "No hs_err in vol"
           ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err host"
-          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /tmp/hs_err*.log 2>&1; cat /tmp/hs_err*.log 2>&1 | head -n 1000; ls -lh /home/container/hs_err*.log 2>&1 || true'
+          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /home/container/hs_err*.log 2>&1; cat /home/container/hs_err*.log 2>&1 | head -n 2000; ls -lh /home/container/pumpkin*.log 2>&1; tail -n 500 /home/container/pumpkin-patchbukkit-test.log 2>&1 || true'
           echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true
           if [ -n "${PLAYASIA_DISCORD_WEBHOOK:-}" ]; then MSG=":package: [Pumpkin DEV] patchbukkit $(date -u +%Y-%m-%dT%H:%M:%SZ) exit $PUMPKIN_EXIT by github-actions/${GITHUB_SHA:0:7}"; curl -sS -X POST -H "Content-Type: application/json" -d "{\"content\":\"$MSG\"}" "$PLAYASIA_DISCORD_WEBHOOK" || true; fi
-          docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'cp /tmp/hs_err*.log /home/container/ 2>&1 || true; cp /tmp/pumpkin-patchbukkit-test.log /home/container/ 2>&1 || true'
+          # logs already in vol (/home/container), no need to cp from /tmp
           test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
           REMOTE
           } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
@@ -369,13 +370,15 @@ jobs:
             printf '%s\n' "$VM_SUDO_PASSWORD"
             cat <<'REMOTE'
           vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
-          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log /home/ghosty/hs_err*.log "$vol"/hs_err*.log "$vol"/pumpkin*.log 2>&1 || true
-          cat /tmp/pumpkin-patchbukkit-test.log 2>&1 | tail -n 500 || true
-          ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1 || true
+          ls -lh /tmp/hs_err*.log /home/ghosty/hs_err*.log "$vol"/hs_err*.log "$vol"/pumpkin*.log "$vol"/pumpkin-patchbukkit-test.log "$vol"/pumpkin-exit-code.log 2>&1 || true
+          cat "$vol"/pumpkin-patchbukkit-test.log 2>&1 | tail -n 1000 || true
+          cat "$vol"/hs_err*.log 2>&1 | head -n 2000 || true
+          ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" "$vol"/pumpkin-patchbukkit-test.log 2>&1 || true
           REMOTE
           } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote.log || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || echo "no log via SCP"
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/hs_err*.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/home/ghosty/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/hs_err*.log" diagnostics/ 2>&1 || true
           ls -lh diagnostics/ || true
 
       - name: Upload deploy diagnostics
