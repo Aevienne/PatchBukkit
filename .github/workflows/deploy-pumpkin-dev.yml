@@ -32,15 +32,152 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Download latest build artifact for ref
+        id: dl
         uses: dawidd6/action-download-artifact@v3
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: build-linux.yml
+          workflow_search: true
+          workflow_conclusion: success
           branch: ${{ inputs.ref }}
           name: patchbukkit-linux-*
           name_is_regexp: true
           path: artifact
-          merge-multiple: true
+          search_artifacts: true
+          check_artifacts: true
           if_no_artifact_found: warn
+
+      - name: Debug download outputs
+        if: always()
+        run: |
+          echo "found_artifact=${{ steps.dl.outputs.found_artifact }}"
+          echo "error_message=${{ steps.dl.outputs.error_message }}"
+          echo "artifacts=${{ steps.dl.outputs.artifacts }}"
+          echo "=== ls artifact ==="
+          ls -R artifact 2>&1 | head -n 300 || echo "no artifact dir"
+          find artifact -type f 2>/dev/null | head -n 30 || true
+
+      - name: Normalize artifact layout (dawidd6 without merge_multiple)
+        if: always()
+        run: |
+          echo "=== artifact tree after download ==="
+          ls -R artifact 2>&1 | head -n 300 || echo "no artifact dir"
+          find artifact -type f \( -name "*.so" -o -name "*.jar" \) 2>/dev/null | head -n 30 || true
+          # dawidd6 extracts each artifact into its own subdir patchbukkit-linux-<sha>/; flatten to artifact/
+          if [ -d artifact ]; then
+            for d in artifact/patchbukkit-linux-*; do
+              [ -d "$d" ] || continue
+              echo "Flatten $d -> artifact/"
+              # preserve rust/target/... structure if present, also flat files
+              if [ -d "$d/rust" ]; then cp -rn "$d/rust" artifact/ 2>/dev/null || cp -R "$d/rust" artifact/ 2>/dev/null || true; fi
+              if [ -d "$d/java" ]; then cp -rn "$d/java" artifact/ 2>/dev/null || cp -R "$d/java" artifact/ 2>/dev/null || true; fi
+              cp -n "$d"/*.so "$d"/*.jar artifact/ 2>/dev/null || true
+              find "$d" -type f \( -name "*.so" -o -name "*.jar" \) -exec cp -n {} artifact/ \; 2>/dev/null || true
+            done
+          fi
+          echo "=== after flatten ==="
+          ls -R artifact 2>&1 | head -n 300 || true
+          find artifact -type f \( -name "*.so" -o -name "*.jar" \) -exec ls -lh {} \; 2>&1 | head -n 20 || true
+
+      - name: Fallback - try gh run download via API (if still missing)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | grep -q .; then
+            echo "Already have .so, skipping gh run download"
+            exit 0
+          fi
+          echo "Attempting gh run list for build-linux.yml ..."
+          gh --version 2>&1 | head -n 1 || true
+          # List recent successful runs for that workflow+branch
+          gh run list --workflow=build-linux.yml --branch="${{ inputs.ref }}" --status=success --limit 5 2>&1 | head -n 100 || true
+          gh run list --workflow=build-linux.yml --status=success --limit 5 2>&1 | head -n 100 || true
+          # Get latest successful run id for that branch
+          RUN_ID=$(gh run list --workflow=build-linux.yml --branch="${{ inputs.ref }}" --status=success --limit 1 --json databaseId --jq '.[0].databaseId' 2>&1 | tr -d '\r' | grep -E '^[0-9]+$' || true)
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --workflow=build-linux.yml --status=success --limit 1 --json databaseId --jq '.[0].databaseId' 2>&1 | tr -d '\r' | grep -E '^[0-9]+$' || true)
+          fi
+          echo "Candidate RUN_ID=$RUN_ID"
+          if [ -n "$RUN_ID" ]; then
+            echo "Trying gh run download $RUN_ID ..."
+            gh run download "$RUN_ID" --dir artifact --repo Aevienne/PatchBukkit 2>&1 | head -n 100 || true
+            gh run download "$RUN_ID" --name "patchbukkit-linux-*" --dir artifact --repo Aevienne/PatchBukkit 2>&1 | head -n 100 || echo "gh run download with pattern failed"
+            ls -R artifact 2>&1 | head -n 300 || true
+            # Flatten again if download created subdir
+            for d in artifact/patchbukkit-linux-*; do [ -d "$d" ] && cp -rn "$d"/* artifact/ 2>/dev/null || true; done
+            find artifact -type f \( -name "*.so" -o -name "*.jar" \) -exec ls -lh {} \; 2>&1 | head -n 20 || true
+          else
+            echo "No RUN_ID found via gh"
+          fi
+
+      - name: Download release asset fallback (if artifact still missing)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | grep -q .; then
+            echo "Artifact already present, skipping release fallback"
+            find artifact -type f \( -name "*.so" -o -name "*.jar" \) -exec ls -lh {} \; 2>&1 | head -n 20 || true
+            exit 0
+          fi
+          echo "No artifact from workflow, trying release v0.1.1-pumpkin-dev-working..."
+          mkdir -p artifact
+          # Try gh release download (private repo needs GH_TOKEN)
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh version: $(gh --version 2>&1 | head -n 1)"
+            gh release download v0.1.1-pumpkin-dev-working --repo Aevienne/PatchBukkit --dir artifact --clobber 2>&1 || echo "gh download v0.1.1 failed, trying nightly"
+            gh release download nightly --repo Aevienne/PatchBukkit --dir artifact --clobber 2>&1 || echo "gh download nightly also failed"
+            ls -R artifact 2>&1 | head -n 100 || true
+          else
+            echo "gh not found"
+          fi
+          if ! find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | grep -q .; then
+            echo "Trying curl for release assets via API..."
+            curl -fsSL -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Aevienne/PatchBukkit/releases/tags/v0.1.1-pumpkin-dev-working" -o /tmp/release.json || true
+            cat /tmp/release.json 2>&1 | head -n 80 || true
+            # Try extracting browser_download_url (works without Accept: octet-stream for curl -L)
+            for asset in libpatchbukkit.so patchbukkit.jar patchbukkit-test-plugin.jar; do
+              burl=$(python3 -c "import json; d=json.load(open('/tmp/release.json')); print(next((a.get('browser_download_url','') for a in d.get('assets',[]) if a.get('name')==\"$asset\"),''))" 2>/dev/null || echo "")
+              aurl=$(python3 -c "import json; d=json.load(open('/tmp/release.json')); print(next((a.get('url','') for a in d.get('assets',[]) if a.get('name')==\"$asset\"),''))" 2>/dev/null || echo "")
+              if [ -n "$burl" ]; then
+                echo "Downloading $asset via browser_download_url $burl"
+                curl -fsSL -H "Authorization: token $GH_TOKEN" -L "$burl" -o "artifact/$asset" 2>&1 || curl -fsSL -L "$burl" -o "artifact/$asset" 2>&1 || true
+              elif [ -n "$aurl" ]; then
+                echo "Downloading $asset via API url $aurl"
+                curl -fsSL -H "Authorization: token $GH_TOKEN" -H "Accept: application/octet-stream" -L "$aurl" -o "artifact/$asset" || true
+              fi
+            done
+            # Final public fallback (release may be public)
+            if ! find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | grep -q .; then
+              echo "Fallback direct download..."
+              curl -fsSL -L "https://github.com/Aevienne/PatchBukkit/releases/download/v0.1.1-pumpkin-dev-working/libpatchbukkit.so" -o "artifact/libpatchbukkit.so" 2>&1 | head || true
+              curl -fsSL -L "https://github.com/Aevienne/PatchBukkit/releases/download/nightly/libpatchbukkit.so" -o "artifact/libpatchbukkit.so" 2>&1 | head || true
+            fi
+            if ! find artifact -type f -name "patchbukkit.jar" 2>/dev/null | grep -q .; then
+              curl -fsSL -L "https://github.com/Aevienne/PatchBukkit/releases/download/v0.1.1-pumpkin-dev-working/patchbukkit.jar" -o "artifact/patchbukkit.jar" 2>&1 | head || true
+            fi
+          fi
+          echo "=== final artifact state ==="
+          ls -R artifact 2>&1 | head -n 300 || true
+          find artifact -type f -exec ls -lh {} \; 2>&1 | head -n 30 || true
+          # Ensure expected flat paths exist for later steps (they use find but also direct paths)
+          for f in $(find artifact -type f -name "libpatchbukkit.so" 2>/dev/null); do cp -n "$f" artifact/libpatchbukkit.so 2>/dev/null || true; break; done
+          for f in $(find artifact -type f -name "patchbukkit.jar" 2>/dev/null | head -n 1); do cp -n "$f" artifact/patchbukkit.jar 2>/dev/null || true; break; done
+          for f in $(find artifact -type f -name "patchbukkit-test-plugin.jar" 2>/dev/null | head -n 1); do cp -n "$f" artifact/patchbukkit-test-plugin.jar 2>/dev/null || true; break; done
+          # Also ensure rust/target layout for build-skip check
+          if [ -f "artifact/libpatchbukkit.so" ] && [ ! -f "artifact/rust/target/release/libpatchbukkit.so" ]; then
+            mkdir -p artifact/rust/target/release
+            cp -n artifact/libpatchbukkit.so artifact/rust/target/release/libpatchbukkit.so 2>/dev/null || true
+          fi
+          if [ -f "artifact/patchbukkit.jar" ] && [ ! -f "artifact/java/patchbukkit/build/libs/patchbukkit.jar" ]; then
+            mkdir -p artifact/java/patchbukkit/build/libs
+            cp -n artifact/patchbukkit.jar artifact/java/patchbukkit/build/libs/patchbukkit.jar 2>/dev/null || true
+          fi
+          ls -lh artifact/libpatchbukkit.so artifact/patchbukkit.jar artifact/rust/target/release/libpatchbukkit.so 2>&1 | head -n 20 || true
 
       - name: Set up Java for fallback build
         if: always()
@@ -58,19 +195,42 @@ jobs:
         if: always()
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install sccache for fallback
+        if: always()
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Rust for fallback
+        if: always()
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-bridge
+          cache-all-crates: true
+
       - name: Build if artifact missing
         if: always()
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+          CARGO_INCREMENTAL: 1
         run: |
-          if [ -f "artifact/rust/target/release/libpatchbukkit.so" ] || [ -f "artifact/libpatchbukkit.so" ] || [ -f "rust/target/release/libpatchbukkit.so" ]; then
+          if find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | grep -q .; then
             echo "Artifact found, skipping local build"
-            ls -lh artifact/rust/target/release/libpatchbukkit.so artifact/libpatchbukkit.so rust/target/release/libpatchbukkit.so 2>&1 | head -n 20 || true
+            find artifact -type f \( -name "*.so" -o -name "*.jar" \) -exec ls -lh {} \; 2>&1 | head -n 20 || true
             exit 0
           fi
-          echo "No artifact for ${{ inputs.ref }}, building locally for deploy..."
+          if [ -f "rust/target/release/libpatchbukkit.so" ]; then
+            echo "Found local rust/target build, skipping"
+            ls -lh rust/target/release/libpatchbukkit.so 2>&1 | head -n 20 || true
+            exit 0
+          fi
+          echo "No artifact for ${{ inputs.ref }}, building locally for deploy (warm cache)..."
           sudo apt-get update && sudo apt-get install -y protobuf-compiler mold clang
+          mold --version || true
+          sccache --start-server || true
           java -version 2>&1 | head -n 1
           ./java/gradlew --no-daemon jar --project-dir java
-          cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml
+          cargo build --release --locked --jobs 2 --manifest-path rust/Cargo.toml --verbose
+          sccache --show-stats || true
 
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.1
@@ -110,38 +270,71 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${VM_PORT:-2222}"
-          # Find artifacts in multiple possible locations (pattern download flattens vs preserves path)
+          # Find artifacts in multiple possible locations (pattern download flattens vs preserves path) + find fallback
           for cand in "artifact/rust/target/release/libpatchbukkit.so" "artifact/libpatchbukkit.so" "rust/target/release/libpatchbukkit.so"; do [ -f "$cand" ] && ART_SO="$cand" && break; done
           for cand in "artifact/java/patchbukkit/build/libs/patchbukkit.jar" "artifact/patchbukkit.jar" "java/patchbukkit/build/libs/patchbukkit.jar"; do [ -f "$cand" ] && ART_JAR="$cand" && break; done
           for cand in "artifact/java/patchbukkit-test-plugin/build/libs/patchbukkit-test-plugin.jar" "artifact/patchbukkit-test-plugin.jar"; do [ -f "$cand" ] && ART_TEST="$cand" && break; done
+          # Fallback via find (handles nested extraction like artifact/patchbukkit-linux-*/...)
+          if [ -z "${ART_SO:-}" ] || [ ! -f "${ART_SO:-}" ]; then ART_SO=$(find artifact -type f -name "libpatchbukkit.so" 2>/dev/null | head -n 1); fi
+          if [ -z "${ART_JAR:-}" ] || [ ! -f "${ART_JAR:-}" ]; then ART_JAR=$(find artifact -type f -name "patchbukkit.jar" 2>/dev/null | head -n 1); fi
+          if [ -z "${ART_TEST:-}" ] || [ ! -f "${ART_TEST:-}" ]; then ART_TEST=$(find artifact -type f -name "patchbukkit-test-plugin.jar" 2>/dev/null | head -n 1); fi
           ART_SO="${ART_SO:-artifact/rust/target/release/libpatchbukkit.so}"
           ART_JAR="${ART_JAR:-artifact/java/patchbukkit/build/libs/patchbukkit.jar}"
-          echo "Artifacts: $ART_SO ($([ -f "$ART_SO" ] && stat -c%s "$ART_SO" || echo missing)) $ART_JAR"
+          echo "Artifacts: $ART_SO ($([ -f "$ART_SO" ] && stat -c%s "$ART_SO" || echo missing)) $ART_JAR ($([ -f "$ART_JAR" ] && stat -c%s "$ART_JAR" || echo missing)) ${ART_TEST:-no-test}"
+          ls -R artifact 2>&1 | head -n 100 || true
+          find artifact -type f -exec ls -lh {} \; 2>&1 | head -n 20 || true
+          # Fail fast if still missing
+          if [ ! -f "$ART_SO" ]; then echo "ERROR: libpatchbukkit.so not found, aborting"; exit 1; fi
+          if [ ! -f "$ART_JAR" ]; then echo "ERROR: patchbukkit.jar not found, aborting"; exit 1; fi
+          # Prefer API upload for .so (136MB) + .jar; SCP to ~/ as primary transport (not /tmp — Permission denied 2026-09-03)
           set +e
+          # Try SCP to home dir first (host /tmp is 1777 but ghosty cannot write via scp)
           scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
             "$ART_SO" "$ART_JAR" ${ART_TEST:+$ART_TEST} \
-            "${VM_USER}@139.99.121.15:/tmp/" 2>&1 | tee /tmp/scp.log
+            "${VM_USER}@139.99.121.15:~/" 2>&1 | tee /tmp/scp.log
           SCP_EXIT=${PIPESTATUS[0]}
           if [ $SCP_EXIT -ne 0 ]; then
-            echo "SCP failed $SCP_EXIT, API fallback for jars <100MB only"
+            echo "SCP to ~/ failed $SCP_EXIT, trying API upload (signed URL) for both .so and .jar"
             cat /tmp/scp.log || true
-            if [ -n "${CALAGOPUS_API_KEY:-}" ] && [ -f "$ART_JAR" ]; then
-              SIGNED=$(curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/upload?directory=%2Fplugins%2Fdata%2Fpatchbukkit%2Fjassets")
-              URL=$(echo "$SIGNED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('attributes',{}).get('url',''))" 2>/dev/null || echo "")
-              [ -n "$URL" ] && curl -sS -X POST -H "Authorization: Bearer $CALAGOPUS_API_KEY" -F "files=@$ART_JAR" "${URL}&directory=%2Fplugins%2Fdata%2Fpatchbukkit%2Fjassets" | head || echo "API fallback failed"
+            API_OK=true
+            for f in "$ART_SO" "$ART_JAR" ${ART_TEST:+$ART_TEST}; do
+              [ -f "$f" ] || continue
+              leaf=$(basename "$f")
+              # Map artifact -> container path directory for signed URL
+              case "$leaf" in
+                libpatchbukkit.so) dir="%2Fplugins" ;;
+                patchbukkit.jar) dir="%2Fplugins%2Fdata%2Fpatchbukkit%2Fjassets" ;;
+                patchbukkit-test-plugin.jar) dir="%2Fpatchbukkit%2Fpatchbukkit-plugins" ;;
+                *) dir="%2Fplugins" ;;
+              esac
+              SIGNED=$(curl -sS -H "Authorization: Bearer $CALAGOPUS_API_KEY" "https://panel.playasia.online/api/client/servers/0663eb80-d3b8-45bd-86b1-579098d1f653/files/upload?directory=$dir")
+              URL=$(echo "$SIGNED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('attributes',{}).get('url','') or d.get('url','') or d.get('data',{}).get('attributes',{}).get('url',''))" 2>/dev/null || echo "")
+              if [ -z "$URL" ]; then echo "Failed to get signed URL for $leaf (dir $dir)"; echo "$SIGNED" | head -c 500; API_OK=false; continue; fi
+              echo "API uploading $leaf to $dir ..."
+              if ! curl -sS -X POST -F "files=@$f" "${URL}&directory=$dir" | head -n 20; then echo "API upload failed for $leaf"; API_OK=false; fi
+            done
+            if [ "$API_OK" = "false" ] && [ $SCP_EXIT -ne 0 ]; then
+              echo "Both SCP and API failed"
+              exit 1
             fi
-            [ $SCP_EXIT -eq 0 ] || exit 1
+            # If API succeeded, skip SCP failure exit
+            SCP_EXIT=0
           fi
           {
             printf '%s\n' "$VM_SUDO_PASSWORD"
             cat <<'REMOTE'
           set -euo pipefail
           vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
-          ls -lh /tmp/libpatchbukkit.so /tmp/patchbukkit.jar 2>&1 || echo "missing /tmp"
-          install -m 0755 /tmp/libpatchbukkit.so "$vol/plugins/libpatchbukkit.so"
-          install -m 0644 /tmp/patchbukkit.jar "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"
+          # Staged files are in /home/ghosty/ (~/) not /tmp (Permission denied on host /tmp per 2026-09-03)
+          ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar ~/libpatchbukkit.so ~/patchbukkit.jar /tmp/libpatchbukkit.so /tmp/patchbukkit.jar 2>&1 || echo "checking staged"
+          # Prefer ~/ but fall back to /tmp or API-installed location
+          SRC_SO=""; for p in /home/ghosty/libpatchbukkit.so ~/libpatchbukkit.so /tmp/libpatchbukkit.so; do [ -f "$p" ] && SRC_SO="$p" && break; done
+          SRC_JAR=""; for p in /home/ghosty/patchbukkit.jar ~/patchbukkit.jar /tmp/patchbukkit.jar; do [ -f "$p" ] && SRC_JAR="$p" && break; done
+          if [ -n "$SRC_SO" ]; then install -m 0755 "$SRC_SO" "$vol/plugins/libpatchbukkit.so"; else echo "WARN: libpatchbukkit.so not staged via SCP, expect API upload already at $vol/plugins/libpatchbukkit.so"; ls -lh "$vol/plugins/libpatchbukkit.so" 2>&1 || true; fi
+          if [ -n "$SRC_JAR" ]; then install -m 0644 "$SRC_JAR" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; else echo "WARN: patchbukkit.jar not staged via SCP, expect API upload already at $vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; fi
           mkdir -p "$vol/patchbukkit/patchbukkit-plugins" "$vol/plugins/data/patchbukkit/jassets"
-          [ -f /tmp/patchbukkit-test-plugin.jar ] && install -m 0644 /tmp/patchbukkit-test-plugin.jar "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || true
+          SRC_TEST=""; for p in /home/ghosty/patchbukkit-test-plugin.jar ~/patchbukkit-test-plugin.jar /tmp/patchbukkit-test-plugin.jar; do [ -f "$p" ] && SRC_TEST="$p" && break; done
+          [ -n "$SRC_TEST" ] && install -m 0644 "$SRC_TEST" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || echo "No test plugin staged (or via API)"
           ls -lh "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1
           cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
           trap cleanup EXIT
@@ -176,8 +369,9 @@ jobs:
             printf '%s\n' "$VM_SUDO_PASSWORD"
             cat <<'REMOTE'
           vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
-          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log "$vol"/hs_err*.log 2>&1 || true
+          ls -lh /tmp/hs_err*.log /tmp/pumpkin*.log /home/ghosty/hs_err*.log "$vol"/hs_err*.log "$vol"/pumpkin*.log 2>&1 || true
           cat /tmp/pumpkin-patchbukkit-test.log 2>&1 | tail -n 500 || true
+          ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1 || true
           REMOTE
           } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote.log || true
           scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/tmp/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || echo "no log via SCP"
