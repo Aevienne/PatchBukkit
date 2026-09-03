@@ -1,0 +1,91 @@
+name: Debug Pumpkin Wrapper
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable:
+        description: 'Enable RUST_BACKTRACE wrapper (true) or restore original (false)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  wrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Trust VM host key
+        env:
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
+            KEY="${{ secrets.VM_HOST_KEY }}"
+            if echo "$KEY" | grep -q "ssh-"; then
+              if echo "$KEY" | grep -q "139.99.121.15"; then
+                printf '%s\n' "$KEY" > ~/.ssh/known_hosts
+              else
+                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+              fi
+            else
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            fi
+          else
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+          fi
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          cat ~/.ssh/known_hosts
+
+      - name: Setup wrapper
+        env:
+          VM_SUDO_PASSWORD: ${{ secrets.VM_SUDO_PASSWORD }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_USER: ${{ secrets.VM_USER }}
+          ENABLE: ${{ inputs.enable }}
+        run: |
+          set -euo pipefail
+          PORT="${VM_PORT:-2222}"
+          {
+            printf '%s\n' "$VM_SUDO_PASSWORD"
+            cat <<'REMOTE'
+          set -euo pipefail
+          vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          ls -lh "$vol/pumpkin" "$vol/pumpkin.real" "$vol/pumpkin.wrapper" 2>&1 || true
+          if [ "${ENABLE:-true}" = "true" ] || [ "${ENABLE}" = "1" ]; then
+            echo "Enabling wrapper"
+            if [ ! -f "$vol/pumpkin.real" ]; then
+              cp -a "$vol/pumpkin" "$vol/pumpkin.real"
+              echo "Backed up pumpkin to pumpkin.real"
+            fi
+            cat > "$vol/pumpkin.wrapper" <<'WRAPPER'
+          #!/bin/bash
+          export RUST_BACKTRACE=full
+          export RUST_LOG=debug
+          export RUST_BACKTRACE=1
+          echo "[wrapper] RUST_BACKTRACE=full RUST_LOG=debug exec pumpkin.real $@" | tee -a /home/container/logs/latest.log
+          exec ./pumpkin.real "$@"
+          WRAPPER
+            chmod +x "$vol/pumpkin.wrapper"
+            cp -a "$vol/pumpkin.wrapper" "$vol/pumpkin"
+            chmod +x "$vol/pumpkin"
+            ls -lh "$vol/pumpkin" "$vol/pumpkin.real" "$vol/pumpkin.wrapper" 2>&1
+            cat "$vol/pumpkin" 2>&1 | head -n 20
+          else
+            echo "Restoring original"
+            if [ -f "$vol/pumpkin.real" ]; then
+              cp -a "$vol/pumpkin.real" "$vol/pumpkin"
+              chmod +x "$vol/pumpkin"
+              echo "Restored"
+            fi
+            ls -lh "$vol/pumpkin" 2>&1
+          fi
+          REMOTE
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
+          echo "wrapper done"
