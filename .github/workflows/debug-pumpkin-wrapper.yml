@@ -68,9 +68,8 @@ jobs:
           #!/bin/bash
           export RUST_BACKTRACE=full
           export RUST_LOG=debug
-          export RUST_BACKTRACE=1
           echo "[wrapper] RUST_BACKTRACE=full RUST_LOG=debug exec pumpkin.real $@" | tee -a /home/container/logs/latest.log
-          exec ./pumpkin.real "$@"
+          ./pumpkin.real "$@" 2>&1 | tee -a /home/container/logs/latest.log; exit ${PIPESTATUS[0]}
           WRAPPER
             chmod +x "$vol/pumpkin.wrapper"
             cp -a "$vol/pumpkin.wrapper" "$vol/pumpkin"
