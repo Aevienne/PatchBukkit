@@ -68,6 +68,7 @@ jobs:
           #!/bin/bash
           export RUST_BACKTRACE=full
           export RUST_LOG=debug
+          export PATCHBUKKIT_SKIP_BOOTSTRAP=1
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
           # Try gdb/catchsegv for segfault backtrace if available, else direct
