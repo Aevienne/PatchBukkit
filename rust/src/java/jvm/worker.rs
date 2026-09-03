@@ -314,14 +314,19 @@ impl JvmWorker {
                 e
             })?;
 
-            setup_patchbukkit_server(env).map_err(|e| {
-                tracing::error!("Failed to setup PatchBukkit server: {e:?}");
-                if env.exception_check() {
-                    env.exception_describe();
-                    env.exception_clear();
-                }
-                e
-            })?;
+            tracing::info!("About to setup PatchBukkit server (debug skip if env PATCHBUKKIT_SKIP_BOOTSTRAP)");
+            if std::env::var("PATCHBUKKIT_SKIP_BOOTSTRAP").is_ok() {
+                tracing::warn!("Skipping setup_patchbukkit_server due to PATCHBUKKIT_SKIP_BOOTSTRAP");
+            } else {
+                setup_patchbukkit_server(env).map_err(|e| {
+                    tracing::error!("Failed to setup PatchBukkit server: {e:?}");
+                    if env.exception_check() {
+                        env.exception_describe();
+                        env.exception_clear();
+                    }
+                    e
+                })?;
+            }
 
             Ok(())
         });
