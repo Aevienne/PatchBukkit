@@ -70,6 +70,8 @@ jobs:
           export RUST_LOG=debug
           # PATCHBUKKIT_SKIP_BOOTSTRAP removed 2026-09-03: JVM bootstrap hardened
           # (8MiB worker stack, Xss2m, jna.tmpdir, heap cap) - real Bootstrap path live
+          # DIAG 2026-09-03: trace silent exit-139 (no hs_err) during Bootstrap/JNA load
+          export JAVA_TOOL_OPTIONS="-verbose:class -Djna.debug_load=true"
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
           # yolks:java_25 runs as container user without sudo/gdb: skip apt attempts, run direct
