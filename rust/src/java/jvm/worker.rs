@@ -298,7 +298,6 @@ impl JvmWorker {
             .option("-XX:ErrorFile=/home/container/hs_err_%p.log")
             .option("-XX:HeapDumpPath=/home/container/")
             .option("-XX:+CrashOnOutOfMemoryError")
-            .option("-Xcheck:jni")
             .option("--enable-native-access=ALL-UNNAMED")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
@@ -348,9 +347,16 @@ pub fn setup_patchbukkit_server(env: &mut Env) -> anyhow::Result<()> {
         jni::jni_sig!("()Lorg/patchbukkit/PatchBukkitServer;"),
         &[],
     ) {
+        if env.exception_check() {
+            env.exception_describe();
+            env.exception_clear();
+        }
+        return Err(anyhow::anyhow!("Failed to setup PatchBukkit server: {e:?}"));
+    }
+    if env.exception_check() {
         env.exception_describe();
         env.exception_clear();
-        return Err(anyhow::anyhow!("Failed to setup PatchBukkit server: {e:?}"));
+        return Err(anyhow::anyhow!("Pending exception after initServer"));
     }
 
     Ok(())
