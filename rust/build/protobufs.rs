@@ -123,6 +123,7 @@ pub unsafe extern "C" fn {fn_name}(
         unsafe {{ *output_len = 0 }};
         return std::ptr::null_mut();
     }};
+    eprintln!("[patchbukkit-ffi] DECODED {fn_name}");
     let Some(response) = {0}::{fn_name}_impl(request) else {{
         unsafe {{ *output_len = 0 }};
         return std::ptr::null_mut();
