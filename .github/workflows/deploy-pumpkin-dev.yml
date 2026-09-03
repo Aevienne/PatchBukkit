@@ -245,18 +245,18 @@ jobs:
           if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
             KEY="${{ secrets.VM_HOST_KEY }}"
             if echo "$KEY" | grep -q "ssh-"; then
-              if echo "$KEY" | grep -q "139.99.121.15"; then
+              if echo "$KEY" | grep -q "15.235.204.178"; then
                 printf '%s\n' "$KEY" > ~/.ssh/known_hosts
               else
-                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+                printf '15.235.204.178 %s\n' "$KEY" > ~/.ssh/known_hosts
               fi
             else
-              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
             fi
           else
-            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
           fi
-          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
           cat ~/.ssh/known_hosts
           ssh-keygen -lf ~/.ssh/known_hosts || true
 
@@ -291,7 +291,7 @@ jobs:
           # Try SCP to home dir first (host /tmp is 1777 but ghosty cannot write via scp)
           scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
             "$ART_SO" "$ART_JAR" ${ART_TEST:+$ART_TEST} \
-            "${VM_USER}@139.99.121.15:~/" 2>&1 | tee /tmp/scp.log
+            "${VM_USER}@15.235.204.178:~/" 2>&1 | tee /tmp/scp.log
           SCP_EXIT=${PIPESTATUS[0]}
           if [ $SCP_EXIT -ne 0 ]; then
             echo "SCP to ~/ failed $SCP_EXIT, trying API upload (signed URL) for both .so and .jar"
@@ -353,7 +353,7 @@ jobs:
           # logs already in vol (/home/container), no need to cp from /tmp
           test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s'
           SSH_EXIT=${PIPESTATUS[1]:-1}
           echo "SSH deploy exit=$SSH_EXIT"
           # Propagate remote failure (e.g. pumpkin test exit 139): without this
@@ -379,10 +379,10 @@ jobs:
           cat "$vol"/hs_err*.log 2>&1 | head -n 2000 || true
           ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" "$vol"/pumpkin-patchbukkit-test.log 2>&1 || true
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote.log || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/home/ghosty/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/hs_err*.log" diagnostics/ 2>&1 || true
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s' | tee diagnostics/remote.log || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/home/ghosty/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/hs_err*.log" diagnostics/ 2>&1 || true
           ls -lh diagnostics/ || true
 
       - name: Upload deploy diagnostics

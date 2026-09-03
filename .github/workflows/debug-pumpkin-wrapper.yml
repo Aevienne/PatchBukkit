@@ -29,18 +29,18 @@ jobs:
           if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
             KEY="${{ secrets.VM_HOST_KEY }}"
             if echo "$KEY" | grep -q "ssh-"; then
-              if echo "$KEY" | grep -q "139.99.121.15"; then
+              if echo "$KEY" | grep -q "15.235.204.178"; then
                 printf '%s\n' "$KEY" > ~/.ssh/known_hosts
               else
-                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+                printf '15.235.204.178 %s\n' "$KEY" > ~/.ssh/known_hosts
               fi
             else
-              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
             fi
           else
-            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
           fi
-          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
           cat ~/.ssh/known_hosts
 
       - name: Setup wrapper
@@ -109,5 +109,5 @@ jobs:
             ls -lh "$vol/pumpkin" 2>&1
           fi
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s'
           echo "wrapper done"
