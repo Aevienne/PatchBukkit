@@ -71,11 +71,7 @@ jobs:
           export PATCHBUKKIT_SKIP_BOOTSTRAP=1
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          # Try gdb/catchsegv for segfault backtrace if available, else direct
-          if ! command -v gdb >/dev/null 2>&1 && ! command -v catchsegv >/dev/null 2>&1; then
-            echo "[wrapper] gdb/catchsegv not found, attempting apt-get install with sudo..." | tee -a "$LOG"
-            sudo apt-get update > /tmp/gdb-apt.log 2>&1 && sudo apt-get install -y gdb libc6-dev --no-install-recommends >> /tmp/gdb-apt.log 2>&1 || echo "[wrapper] apt-get failed $(tail -n 20 /tmp/gdb-apt.log 2>&1)" | tee -a "$LOG"
-          fi
+          # yolks:java_25 runs as container user without sudo/gdb: skip apt attempts, run direct
           ulimit -c unlimited || true
           if command -v gdb >/dev/null 2>&1; then
             echo "[wrapper] running under gdb" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
@@ -86,10 +82,14 @@ jobs:
           else
             echo "[wrapper] gdb/catchsegv not available, direct run with ulimit core" | tee -a "$LOG"
             ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
-            for f in /tmp/hs_err*.log /home/container/hs_err*.log /home/container/core*; do [ -f "$f" ] && echo "[wrapper] found $f" | tee -a "$LOG"; ls -lh "$f" 2>&1 | tee -a "$LOG"; cat "$f" 2>&1 | head -n 300 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
+            shopt -s nullglob
+            for f in /tmp/hs_err*.log /home/container/hs_err*.log /home/container/core*; do [ -e "$f" ] || continue; echo "[wrapper] found $f" | tee -a "$LOG"; ls -lh "$f" 2>&1 | tee -a "$LOG"; cat "$f" 2>&1 | head -n 300 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
+            shopt -u nullglob
           fi
           echo "[wrapper] exit $EC" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -f "$f" ] && cp -a "$f" /home/container/ 2>/dev/null || true; done
+          shopt -s nullglob
+          for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -e "$f" ] || continue; cp -a "$f" /home/container/ 2>/dev/null || true; done
+          shopt -u nullglob
           tail -n 300 "$LOG" | tee -a /home/container/logs/latest.log || true
           exit $EC
           WRAPPER

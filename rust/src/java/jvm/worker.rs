@@ -299,6 +299,15 @@ impl JvmWorker {
             .option("-XX:HeapDumpPath=/home/container/")
             .option("-XX:+CrashOnOutOfMemoryError")
             .option("--enable-native-access=ALL-UNNAMED")
+            // Avoid JNA native dispatch crash in Bootstrap (LinuxNuma -> System.load segfault):
+            // disable Paper concurrentutil NUMA path and extract JNA to volume cache, not /tmp
+            .option("-Dca.spottedleaf.concurrentutil.numa.disabled=true")
+            .option("-Djna.tmpdir=/home/container/.cache/jna")
+            .option("-Dfile.encoding=UTF-8")
+            // Bootstrap does deep registry init on this thread; give it headroom
+            .option("-Xss2m")
+            // Container limit is ~1.2GB shared with Pumpkin Rust; cap Java heap so both fit
+            .option("-Xmx768m")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
             .build()

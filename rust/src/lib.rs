@@ -187,6 +187,9 @@ impl PatchBukkitPlugin {
         let runtime_clone = runtime.clone();
         std::thread::Builder::new()
             .name("patchbukkit-jvm-worker".to_string())
+            // JVM Bootstrap does deep class-init recursion + JNA native calls;
+            // Rust default 2MiB stack risks native stack overflow -> SIGSEGV (exit 139)
+            .stack_size(8 * 1024 * 1024)
             .spawn(move || {
                 runtime_clone.block_on(async move {
                     JvmWorker::new(rx).attach_thread().await;
