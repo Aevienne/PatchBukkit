@@ -70,21 +70,22 @@ jobs:
           export RUST_LOG=debug
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          # Try gdb for segfault backtrace if available, else direct
-          if ! command -v gdb >/dev/null 2>&1; then
-            echo "[wrapper] gdb not found, attempting apt-get install with sudo..." | tee -a "$LOG"
-            sudo apt-get update > /tmp/gdb-apt.log 2>&1 && sudo apt-get install -y gdb --no-install-recommends >> /tmp/gdb-apt.log 2>&1 || echo "[wrapper] gdb install failed $(tail -n 20 /tmp/gdb-apt.log 2>&1)" | tee -a "$LOG"
+          # Try gdb/catchsegv for segfault backtrace if available, else direct
+          if ! command -v gdb >/dev/null 2>&1 && ! command -v catchsegv >/dev/null 2>&1; then
+            echo "[wrapper] gdb/catchsegv not found, attempting apt-get install with sudo..." | tee -a "$LOG"
+            sudo apt-get update > /tmp/gdb-apt.log 2>&1 && sudo apt-get install -y gdb libc6-dev --no-install-recommends >> /tmp/gdb-apt.log 2>&1 || echo "[wrapper] apt-get failed $(tail -n 20 /tmp/gdb-apt.log 2>&1)" | tee -a "$LOG"
           fi
+          ulimit -c unlimited || true
           if command -v gdb >/dev/null 2>&1; then
             echo "[wrapper] running under gdb" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-            ulimit -c unlimited || true
             gdb -batch -ex "run" -ex "bt full" -ex "thread apply all bt" --args ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
+          elif command -v catchsegv >/dev/null 2>&1; then
+            echo "[wrapper] running under catchsegv" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
+            catchsegv ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
           else
-            echo "[wrapper] gdb not available, direct run with ulimit core" | tee -a "$LOG"
-            ulimit -c unlimited || true
+            echo "[wrapper] gdb/catchsegv not available, direct run with ulimit core" | tee -a "$LOG"
             ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
-            # try to capture hs_err from volume
-            for f in /tmp/hs_err*.log /home/container/hs_err*.log; do [ -f "$f" ] && echo "[wrapper] found hs_err $f" | tee -a "$LOG"; cat "$f" 2>&1 | head -n 200 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
+            for f in /tmp/hs_err*.log /home/container/hs_err*.log /home/container/core*; do [ -f "$f" ] && echo "[wrapper] found $f" | tee -a "$LOG"; ls -lh "$f" 2>&1 | tee -a "$LOG"; cat "$f" 2>&1 | head -n 300 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
           fi
           echo "[wrapper] exit $EC" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
           for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -f "$f" ] && cp -a "$f" /home/container/ 2>/dev/null || true; done
