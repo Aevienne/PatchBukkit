@@ -340,7 +340,7 @@ jobs:
           trap cleanup EXIT
           if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; exit 0; fi
           set +e
-          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:0:7}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
+          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:-unknown}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
           docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -e RUST_LOG=debug -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 90 ./pumpkin 2>&1 | tee /home/container/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /home/container/pumpkin-exit-code.log; cat /home/container/pumpkin-patchbukkit-test.log'
           PUMPKIN_EXIT=$(cat "$vol/pumpkin-exit-code.log" 2>/dev/null || echo "unknown")
           echo "Pumpkin exit: $PUMPKIN_EXIT"
@@ -349,7 +349,7 @@ jobs:
           ls -lh /tmp/hs_err*.log 2>&1 || echo "No hs_err host"
           docker run --rm --entrypoint "" -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'ls -lh /home/container/hs_err*.log 2>&1; cat /home/container/hs_err*.log 2>&1 | head -n 2000; ls -lh /home/container/pumpkin*.log 2>&1; tail -n 500 /home/container/pumpkin-patchbukkit-test.log 2>&1 || true'
           echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true
-          if [ -n "${PLAYASIA_DISCORD_WEBHOOK:-}" ]; then MSG=":package: [Pumpkin DEV] patchbukkit $(date -u +%Y-%m-%dT%H:%M:%SZ) exit $PUMPKIN_EXIT by github-actions/${GITHUB_SHA:0:7}"; curl -sS -X POST -H "Content-Type: application/json" -d "{\"content\":\"$MSG\"}" "$PLAYASIA_DISCORD_WEBHOOK" || true; fi
+          if [ -n "${PLAYASIA_DISCORD_WEBHOOK:-}" ]; then MSG=":package: [Pumpkin DEV] patchbukkit $(date -u +%Y-%m-%dT%H:%M:%SZ) exit $PUMPKIN_EXIT by github-actions/${GITHUB_SHA:-unknown}"; curl -sS -X POST -H "Content-Type: application/json" -d "{\"content\":\"$MSG\"}" "$PLAYASIA_DISCORD_WEBHOOK" || true; fi
           # logs already in vol (/home/container), no need to cp from /tmp
           test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
           REMOTE
