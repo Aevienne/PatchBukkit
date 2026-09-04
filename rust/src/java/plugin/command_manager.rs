@@ -1,6 +1,6 @@
 use anyhow::Result;
 use jni::Env;
-use pumpkin::command::dispatcher::CommandError;
+use pumpkin::command::errors::command_syntax_error::CommandSyntaxError;
 use pumpkin_protocol::java::client::play::CommandSuggestion;
 
 use crate::{commands::SimpleCommandSender, java::jvm::commands::Location};
@@ -25,7 +25,7 @@ impl CommandManager {
         sender: SimpleCommandSender,
         full_command: String,
         location: Option<Location>,
-    ) -> Result<Option<Vec<CommandSuggestion>>, CommandError> {
+    ) -> Result<Option<Vec<CommandSuggestion>>, CommandSyntaxError> {
         match self.try_tab_complete(env, sender, full_command, location) {
             Ok(suggestions) => Ok(suggestions),
             Err(e) => {

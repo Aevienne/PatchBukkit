@@ -1,7 +1,5 @@
 use std::str::FromStr;
 
-use pumpkin::entity::EntityBase;
-
 use crate::{
     java::native_callbacks::{CALLBACK_CONTEXT, utils::with_player},
     proto::patchbukkit::{
@@ -103,6 +101,7 @@ pub fn ffi_native_bridge_teleport_entity_impl(request: TeleportEntityRequest) ->
     let pitch = loc.pitch;
 
     with_player(request.uuid.as_ref(), |player| {
+        use pumpkin::entity::EntityBase;
         let position = pumpkin_util::math::vector3::Vector3::new(pos.x, pos.y, pos.z);
         let world = player.living_entity.entity.world.load_full();
         let player = player.clone();
@@ -322,7 +321,7 @@ pub fn ffi_native_bridge_set_player_list_header_footer_impl(
         ctx.runtime.spawn(async move {
             let h = pumpkin_util::text::TextComponent::from_legacy_string(&header);
             let f = pumpkin_util::text::TextComponent::from_legacy_string(&footer);
-            player.set_tab_list_header_footer(h, f).await;
+            player.set_tab_list_header_footer(&h, &f);
         });
     })
 }

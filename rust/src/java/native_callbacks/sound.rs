@@ -1,4 +1,3 @@
-use pumpkin::command::args::entities::{EntitySelectorType, TargetSelector};
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_protocol::{IdOr, java::client::play::CEntitySoundEffect};
 use pumpkin_util::math::vector3::Vector3;
@@ -26,22 +25,23 @@ pub fn ffi_native_bridge_player_entity_play_sound_impl(
     let seed = rng().random::<i64>();
 
     ctx.runtime.spawn(async move {
-        let entity = ctx.plugin_context.server.select_entities(
-            &TargetSelector::new(EntitySelectorType::Uuid(entity_uuid)),
-            None,
-        );
-
-        if entity.len() != 1 {
-            return None;
-        }
-
-        let entity = entity.first()?.get_entity();
+        // Entity lookup across all worlds (old TargetSelector helper is gone).
+        let entity = {
+            ctx
+            .plugin_context
+            .server
+            .worlds
+            .load()
+            .iter()
+            .flat_map(|world| world.entities.load().iter().cloned().collect::<Vec<_>>())
+            .find(|entity| entity.get_entity().entity_uuid == entity_uuid)?
+        };
 
         player
             .send_client_packet(&CEntitySoundEffect::new(
                 IdOr::Id(pumpkin_sound as u16),
                 category,
-                entity.entity_id.into(),
+                entity.get_entity().entity_id.into(),
                 request.volume,
                 request.pitch,
                 seed,
