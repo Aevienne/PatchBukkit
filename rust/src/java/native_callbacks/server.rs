@@ -29,6 +29,15 @@ pub fn ffi_native_bridge_get_server_info_impl(
     let java_config = &server.advanced_config.networking.java;
 
     eprintln!("[patchbukkit-ffi] server_info step=fields");
+    eprintln!(
+        "[patchbukkit-ffi] server_info addrs server={:p} advanced={:p} java={:p} motd_ptr={:?} motd_len={} motd_cap={}",
+        server,
+        &server.advanced_config,
+        java_config,
+        java_config.motd.as_ptr(),
+        java_config.motd.len(),
+        java_config.motd.capacity()
+    );
     let motd = java_config.motd.clone();
     let ip = java_config.address.ip().to_string();
     let port = java_config.address.port() as i32;
