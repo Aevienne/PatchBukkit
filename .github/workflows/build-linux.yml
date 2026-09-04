@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - 'master'
       - 'feat/**'
       - 'diag/**'
     paths: ['rust/**', 'java/**', 'proto/**', 'Cargo.*', '.github/workflows/build-linux.yml']

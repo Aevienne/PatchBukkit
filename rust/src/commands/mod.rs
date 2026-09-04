@@ -35,18 +35,17 @@ pub struct AnyCommandNode {
 }
 
 impl SuggestionProvider for AnyCommandNode {
-    fn suggest(
-        &self,
-        context: &CommandContext,
-        builder: SuggestionsBuilder,
-    ) -> Suggestions {
+    fn suggest(&self, context: &CommandContext, builder: SuggestionsBuilder) -> Suggestions {
         let input = context.input.clone();
         let sender: SimpleCommandSender = (&context.source.output).into();
 
         let location = {
             let pos = context.source.position;
             let rotation = context.source.output.as_player().map(|player| {
-                Rotation::new(player.living_entity.entity.yaw.load(), player.living_entity.entity.pitch.load())
+                Rotation::new(
+                    player.living_entity.entity.yaw.load(),
+                    player.living_entity.entity.pitch.load(),
+                )
             });
             context
                 .source
@@ -74,8 +73,7 @@ impl AnyCommandNode {
         command_sender: SimpleCommandSender,
         full_command: String,
         location: Option<Location>,
-    ) -> anyhow::Result<Option<Vec<pumpkin_protocol::java::client::play::CommandSuggestion>>>
-    {
+    ) -> anyhow::Result<Option<Vec<pumpkin_protocol::java::client::play::CommandSuggestion>>> {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             tokio::task::block_in_place(|| {
                 handle.block_on(async move {
@@ -220,7 +218,10 @@ pub fn init_java_command(
     let cmd_name = cmd_name.into();
     let description = description.into();
     let mut names_iter = names.into_iter();
-    let primary: String = names_iter.next().map(Into::into).unwrap_or_else(|| cmd_name.clone());
+    let primary: String = names_iter
+        .next()
+        .map(Into::into)
+        .unwrap_or_else(|| cmd_name.clone());
 
     let executor = JavaCommandExecutor {
         cmd_name: cmd_name.clone(),
@@ -229,20 +230,17 @@ pub fn init_java_command(
 
     // primary: /name + greedy passthrough, registered with aliases below
     // (register_with_aliases on the dispatcher handles the rest).
-        let node = command(primary, description)
+    let node = command(primary, description)
         .executes_arc(std::sync::Arc::new(executor))
         .then(
-            argument(
-                ARG_ANY,
-                StringArgumentType::GreedyPhrase,
-            )
-            .suggests_arc(std::sync::Arc::new(AnyCommandNode {
-                command_tx: command_tx.clone(),
-            }))
-            .executes_arc(std::sync::Arc::new(JavaCommandExecutor {
-                cmd_name,
-                command_tx,
-            })),
+            argument(ARG_ANY, StringArgumentType::GreedyPhrase)
+                .suggests_arc(std::sync::Arc::new(AnyCommandNode {
+                    command_tx: command_tx.clone(),
+                }))
+                .executes_arc(std::sync::Arc::new(JavaCommandExecutor {
+                    cmd_name,
+                    command_tx,
+                })),
         )
         .build();
 
@@ -261,10 +259,10 @@ mod tests {
 
         let (tx, _rx) = mpsc::channel(100);
         let tree = init_java_command("fly", tx, ["fly"], "Fly command");
-    let id = dispatcher.register(tree);
-    let node = &dispatcher.tree[id];
+        let id = dispatcher.register(tree);
+        let node = &dispatcher.tree[id];
 
-    assert!(dispatcher.has_command("fly"));
-    assert_eq!(node.meta.literal.as_ref(), "fly");
+        assert!(dispatcher.has_command("fly"));
+        assert_eq!(node.meta.literal.as_ref(), "fly");
     }
 }

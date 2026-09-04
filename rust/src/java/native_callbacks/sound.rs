@@ -27,14 +27,13 @@ pub fn ffi_native_bridge_player_entity_play_sound_impl(
     ctx.runtime.spawn(async move {
         // Entity lookup across all worlds (old TargetSelector helper is gone).
         let entity = {
-            ctx
-            .plugin_context
-            .server
-            .worlds
-            .load()
-            .iter()
-            .flat_map(|world| world.entities.load().iter().cloned().collect::<Vec<_>>())
-            .find(|entity| entity.get_entity().entity_uuid == entity_uuid)?
+            ctx.plugin_context
+                .server
+                .worlds
+                .load()
+                .iter()
+                .flat_map(|world| world.entities.load().iter().cloned().collect::<Vec<_>>())
+                .find(|entity| entity.get_entity().entity_uuid == entity_uuid)?
         };
 
         player

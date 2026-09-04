@@ -3,7 +3,6 @@ use crate::{
     proto::patchbukkit::common::{Location, Uuid, Vec3, World},
 };
 
-
 #[repr(C)]
 pub struct Vec3FFI {
     pub x: f64,
