@@ -21,23 +21,10 @@ use crate::{
 pub fn ffi_native_bridge_get_server_info_impl(
     _request: EmptyRequest,
 ) -> Option<ServerInfoResponse> {
-    eprintln!("[patchbukkit-ffi] server_info step=ctx");
     let ctx = CALLBACK_CONTEXT.get()?;
-    eprintln!("[patchbukkit-ffi] server_info step=server");
     let server = &ctx.plugin_context.server;
-    eprintln!("[patchbukkit-ffi] server_info step=java_config");
     let java_config = &server.advanced_config.networking.java;
 
-    eprintln!("[patchbukkit-ffi] server_info step=fields");
-    eprintln!(
-        "[patchbukkit-ffi] server_info addrs server={:p} advanced={:p} java={:p} motd_ptr={:?} motd_len={} motd_cap={}",
-        server,
-        &server.advanced_config,
-        java_config,
-        java_config.motd.as_ptr(),
-        java_config.motd.len(),
-        java_config.motd.capacity()
-    );
     let motd = java_config.motd.clone();
     let ip = java_config.address.ip().to_string();
     let port = java_config.address.port() as i32;
@@ -56,13 +43,10 @@ pub fn ffi_native_bridge_get_server_info_impl(
     let idle_timeout = server.player_idle_timeout.load(Ordering::Relaxed);
 
     let default_gamemode = if let Ok(gm) = server.defaultgamemode.try_lock() {
-        eprintln!("[patchbukkit-ffi] server_info step=gamemode_locked");
         format!("{:?}", gm.gamemode)
     } else {
         "SURVIVAL".to_string()
     };
-
-    eprintln!("[patchbukkit-ffi] server_info step=build_response");
 
     Some(ServerInfoResponse {
         server_name: "Pumpkin".to_string(),
