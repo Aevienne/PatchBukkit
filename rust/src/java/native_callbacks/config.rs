@@ -14,6 +14,8 @@ pub fn ffi_native_bridge_get_patch_bukkit_config_impl(
                 .settings
                 .minimum_supported_plugin_api
                 .clone()
-                .unwrap_or("0.0.0".to_string()),
+                // Floor for UnsafeValues.isSupportedApiVersion: ancient API
+                // versions (e.g. "1.0") must report unsupported.
+                .unwrap_or("1.13".to_string()),
         })
 }

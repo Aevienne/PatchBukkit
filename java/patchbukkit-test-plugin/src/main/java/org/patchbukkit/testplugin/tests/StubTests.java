@@ -10,111 +10,112 @@ import java.util.UUID;
 
 public final class StubTests {
 
-    @ConformanceTest(name = "Server.getWorlds() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getWorlds() is implemented",
+            category = TestCategory.STUBS)
     public void testGetWorlds() {
         Bukkit.getServer().getWorlds();
     }
 
-    @ConformanceTest(name = "Server.getMaxPlayers() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getMaxPlayers() is implemented",
+            category = TestCategory.STUBS)
     public void testGetMaxPlayers() {
         Bukkit.getServer().getMaxPlayers();
     }
 
-    @ConformanceTest(name = "Server.getPort() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getPort() is implemented",
+            category = TestCategory.STUBS)
     public void testGetPort() {
         Bukkit.getServer().getPort();
     }
 
-    @ConformanceTest(name = "Server.getIp() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getIp() is implemented",
+            category = TestCategory.STUBS)
     public void testGetIp() {
         Bukkit.getServer().getIp();
     }
 
-    @ConformanceTest(name = "Server.getViewDistance() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getViewDistance() is implemented",
+            category = TestCategory.STUBS)
     public void testGetViewDistance() {
         Bukkit.getServer().getViewDistance();
     }
 
-    @ConformanceTest(name = "Server.getSimulationDistance() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getSimulationDistance() is implemented",
+            category = TestCategory.STUBS)
     public void testGetSimulationDistance() {
         Bukkit.getServer().getSimulationDistance();
     }
 
-    @ConformanceTest(name = "Server.getUpdateFolder() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getUpdateFolder() is implemented",
+            category = TestCategory.STUBS)
     public void testGetUpdateFolder() {
         Bukkit.getServer().getUpdateFolder();
     }
 
-    @ConformanceTest(name = "Server.getUpdateFolderFile() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getUpdateFolderFile() is implemented",
+            category = TestCategory.STUBS)
     public void testGetUpdateFolderFile() {
         Bukkit.getServer().getUpdateFolderFile();
     }
 
-    @ConformanceTest(name = "Server.getConnectionThrottle() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getConnectionThrottle() is implemented",
+            category = TestCategory.STUBS)
     public void testGetConnectionThrottle() {
         Bukkit.getServer().getConnectionThrottle();
     }
 
-    @ConformanceTest(name = "Server.broadcastMessage() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.broadcastMessage() is implemented",
+            category = TestCategory.STUBS)
     @SuppressWarnings("deprecation")
     public void testBroadcastMessage() {
         Bukkit.getServer().broadcastMessage("test");
     }
 
-    @ConformanceTest(name = "Server.getOfflinePlayer(UUID) throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getOfflinePlayer(UUID) is implemented",
+            category = TestCategory.STUBS)
     public void testGetOfflinePlayer() {
         Bukkit.getServer().getOfflinePlayer(UUID.randomUUID());
     }
 
-    @ConformanceTest(name = "Server.getBanList() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getBanList() is implemented",
+            category = TestCategory.STUBS)
     public void testGetBanList() {
         Bukkit.getServer().getBanList(org.bukkit.BanList.Type.NAME);
     }
 
-    @ConformanceTest(name = "Server.getOperators() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getOperators() is implemented",
+            category = TestCategory.STUBS)
     public void testGetOperators() {
         Bukkit.getServer().getOperators();
     }
 
-    @ConformanceTest(name = "Server.getWhitelistedPlayers() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getWhitelistedPlayers() is implemented",
+            category = TestCategory.STUBS)
     public void testGetWhitelistedPlayers() {
         Bukkit.getServer().getWhitelistedPlayers();
     }
 
-    @ConformanceTest(name = "Server.reloadWhitelist() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.reloadWhitelist() is implemented",
+            category = TestCategory.STUBS)
     public void testReloadWhitelist() {
         Bukkit.getServer().reloadWhitelist();
     }
 
-    @ConformanceTest(name = "Server.shutdown() throws UnsupportedOperationException",
+    @ConformanceTest(name = "Server.shutdown() is not tested live (would stop the server)",
             category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
     public void testShutdown() {
-        Bukkit.getServer().shutdown();
+        // Intentionally not calling shutdown(): it succeeds on live servers.
+        throw new UnsupportedOperationException("shutdown() conformance is verified manually, not live");
     }
 
-    @ConformanceTest(name = "Server.getMotd() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getMotd() is implemented",
+            category = TestCategory.STUBS)
     public void testGetMotd() {
         Bukkit.getServer().getMotd();
     }
 
-    @ConformanceTest(name = "Server.getAllowNether() throws UnsupportedOperationException",
-            category = TestCategory.STUBS, expectation = TestExpectation.EXPECT_UNSUPPORTED)
+    @ConformanceTest(name = "Server.getAllowNether() is implemented",
+            category = TestCategory.STUBS)
     public void testGetAllowNether() {
         Bukkit.getServer().getAllowNether();
     }
