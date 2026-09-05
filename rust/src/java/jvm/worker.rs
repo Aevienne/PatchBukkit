@@ -299,6 +299,17 @@ impl JvmWorker {
             .option("-XX:HeapDumpPath=/home/container/")
             .option("-XX:+CrashOnOutOfMemoryError")
             .option("--enable-native-access=ALL-UNNAMED")
+            // Avoid first-heavy-native-load (JNA dispatch via LinuxNuma during
+            // Bootstrap) dying on /tmp restrictions: extract JNA to volume cache
+            .option("-Djna.tmpdir=/home/container/.cache/jna")
+            // Cap Paper worker threads for the small DEV container (read by
+            // net.minecraft.util.Util.getMaxThreads; default NUMA probing stays)
+            .option("-DPaper.WorkerThreadCount=4")
+            .option("-Dfile.encoding=UTF-8")
+            // Bootstrap does deep registry init on this thread; give it headroom
+            .option("-Xss2m")
+            // Container limit is ~1.2GB shared with Pumpkin Rust; cap Java heap so both fit
+            .option("-Xmx768m")
             .option("-Djoml.nounsafe=true")
             .option("-Dorg.joml.nounsafe=true")
             .build()
@@ -314,9 +325,13 @@ impl JvmWorker {
                 e
             })?;
 
-            tracing::info!("About to setup PatchBukkit server (debug skip if env PATCHBUKKIT_SKIP_BOOTSTRAP)");
+            tracing::info!(
+                "About to setup PatchBukkit server (debug skip if env PATCHBUKKIT_SKIP_BOOTSTRAP)"
+            );
             if std::env::var("PATCHBUKKIT_SKIP_BOOTSTRAP").is_ok() {
-                tracing::warn!("Skipping setup_patchbukkit_server due to PATCHBUKKIT_SKIP_BOOTSTRAP");
+                tracing::warn!(
+                    "Skipping setup_patchbukkit_server due to PATCHBUKKIT_SKIP_BOOTSTRAP"
+                );
             } else {
                 setup_patchbukkit_server(env).map_err(|e| {
                     tracing::error!("Failed to setup PatchBukkit server: {e:?}");

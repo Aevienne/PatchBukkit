@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Result;
-use pumpkin::{command::dispatcher::CommandError, plugin::Context};
+use pumpkin::{command::errors::command_syntax_error::CommandSyntaxError, plugin::Context};
 use pumpkin_protocol::java::client::play::CommandSuggestion;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
@@ -61,7 +61,7 @@ pub enum JvmCommand {
     GetCommandTabComplete {
         command_sender: SimpleCommandSender,
         full_command: String,
-        respond_to: oneshot::Sender<Result<Option<Vec<CommandSuggestion>>, CommandError>>,
+        respond_to: oneshot::Sender<Result<Option<Vec<CommandSuggestion>>, CommandSyntaxError>>,
         location: Option<Location>,
     },
 }
