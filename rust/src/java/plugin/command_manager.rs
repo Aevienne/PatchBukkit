@@ -1,6 +1,5 @@
 use anyhow::Result;
 use jni::Env;
-use pumpkin::command::dispatcher::CommandError;
 use pumpkin_protocol::java::client::play::CommandSuggestion;
 
 use crate::{commands::SimpleCommandSender, java::jvm::commands::Location};
@@ -25,12 +24,12 @@ impl CommandManager {
         sender: SimpleCommandSender,
         full_command: String,
         location: Option<Location>,
-    ) -> Result<Option<Vec<CommandSuggestion>>, CommandError> {
+    ) -> Option<Vec<CommandSuggestion>> {
         match self.try_tab_complete(env, sender, full_command, location) {
-            Ok(suggestions) => Ok(suggestions),
+            Ok(suggestions) => suggestions,
             Err(e) => {
                 tracing::warn!("Tab completion failed: {e}");
-                Ok(None)
+                None
             }
         }
     }

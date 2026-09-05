@@ -245,18 +245,18 @@ jobs:
           if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
             KEY="${{ secrets.VM_HOST_KEY }}"
             if echo "$KEY" | grep -q "ssh-"; then
-              if echo "$KEY" | grep -q "139.99.121.15"; then
+              if echo "$KEY" | grep -q "15.235.204.178"; then
                 printf '%s\n' "$KEY" > ~/.ssh/known_hosts
               else
-                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+                printf '15.235.204.178 %s\n' "$KEY" > ~/.ssh/known_hosts
               fi
             else
-              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
             fi
           else
-            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
           fi
-          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
           cat ~/.ssh/known_hosts
           ssh-keygen -lf ~/.ssh/known_hosts || true
 
@@ -291,7 +291,7 @@ jobs:
           # Try SCP to home dir first (host /tmp is 1777 but ghosty cannot write via scp)
           scp -P "$PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
             "$ART_SO" "$ART_JAR" ${ART_TEST:+$ART_TEST} \
-            "${VM_USER}@139.99.121.15:~/" 2>&1 | tee /tmp/scp.log
+            "${VM_USER}@15.235.204.178:~/" 2>&1 | tee /tmp/scp.log
           SCP_EXIT=${PIPESTATUS[0]}
           if [ $SCP_EXIT -ne 0 ]; then
             echo "SCP to ~/ failed $SCP_EXIT, trying API upload (signed URL) for both .so and .jar"
@@ -325,6 +325,11 @@ jobs:
             cat <<'REMOTE'
           set -euo pipefail
           vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          # Deploy-start marker FIRST (before any mutation): the deploy-watch
+          # janitor flags start-without-done as partial. Done marker closes it
+          # at the end (and on the skip_test early-exit below).
+          mkdir -p "$vol/.signals" 2>&1 || true
+          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:-unknown}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
           # Staged files are in /home/ghosty/ (~/) not /tmp (Permission denied on host /tmp per 2026-09-03)
           ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar ~/libpatchbukkit.so ~/patchbukkit.jar /tmp/libpatchbukkit.so /tmp/patchbukkit.jar 2>&1 || echo "checking staged"
           # Prefer ~/ but fall back to /tmp or API-installed location
@@ -332,15 +337,14 @@ jobs:
           SRC_JAR=""; for p in /home/ghosty/patchbukkit.jar ~/patchbukkit.jar /tmp/patchbukkit.jar; do [ -f "$p" ] && SRC_JAR="$p" && break; done
           if [ -n "$SRC_SO" ]; then install -m 0755 "$SRC_SO" "$vol/plugins/libpatchbukkit.so"; else echo "WARN: libpatchbukkit.so not staged via SCP, expect API upload already at $vol/plugins/libpatchbukkit.so"; ls -lh "$vol/plugins/libpatchbukkit.so" 2>&1 || true; fi
           if [ -n "$SRC_JAR" ]; then install -m 0644 "$SRC_JAR" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; else echo "WARN: patchbukkit.jar not staged via SCP, expect API upload already at $vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; fi
-          mkdir -p "$vol/patchbukkit/patchbukkit-plugins" "$vol/plugins/data/patchbukkit/jassets"
+          mkdir -p "$vol/plugins/data/patchbukkit/jassets" "$vol/plugins/data/patchbukkit/patchbukkit-plugins"
           SRC_TEST=""; for p in /home/ghosty/patchbukkit-test-plugin.jar ~/patchbukkit-test-plugin.jar /tmp/patchbukkit-test-plugin.jar; do [ -f "$p" ] && SRC_TEST="$p" && break; done
-          [ -n "$SRC_TEST" ] && install -m 0644 "$SRC_TEST" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || echo "No test plugin staged (or via API)"
+          [ -n "$SRC_TEST" ] && install -m 0644 "$SRC_TEST" "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || echo "No test plugin staged (or via API)"
           ls -lh "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1
-          cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
+          cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
           trap cleanup EXIT
-          if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; exit 0; fi
+          if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true; exit 0; fi
           set +e
-          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:-unknown}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
           docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -e RUST_LOG=debug -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 90 ./pumpkin 2>&1 | tee /home/container/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /home/container/pumpkin-exit-code.log; cat /home/container/pumpkin-patchbukkit-test.log'
           PUMPKIN_EXIT=$(cat "$vol/pumpkin-exit-code.log" 2>/dev/null || echo "unknown")
           echo "Pumpkin exit: $PUMPKIN_EXIT"
@@ -353,8 +357,12 @@ jobs:
           # logs already in vol (/home/container), no need to cp from /tmp
           test "${PUMPKIN_EXIT#EXIT_CODE:}" -eq 124
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
-          echo "SSH deploy exit=${PIPESTATUS[1]}"
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s'
+          SSH_EXIT=${PIPESTATUS[1]:-1}
+          echo "SSH deploy exit=$SSH_EXIT"
+          # Propagate remote failure (e.g. pumpkin test exit 139): without this
+          # the step stays green because echo above resets the status.
+          exit $SSH_EXIT
 
       - name: Fetch diagnostics
         if: always()
@@ -375,10 +383,10 @@ jobs:
           cat "$vol"/hs_err*.log 2>&1 | head -n 2000 || true
           ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" "$vol"/pumpkin-patchbukkit-test.log 2>&1 || true
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s' | tee diagnostics/remote.log || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/home/ghosty/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
-          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@139.99.121.15:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/hs_err*.log" diagnostics/ 2>&1 || true
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s' | tee diagnostics/remote.log || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/home/ghosty/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/pumpkin-patchbukkit-test.log" diagnostics/ 2>&1 || true
+          scp -P "$PORT" -o ConnectTimeout=10 "${VM_USER}@15.235.204.178:/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653/hs_err*.log" diagnostics/ 2>&1 || true
           ls -lh diagnostics/ || true
 
       - name: Upload deploy diagnostics

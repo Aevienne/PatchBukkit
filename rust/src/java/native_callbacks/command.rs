@@ -47,7 +47,14 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             }
         }
 
-        let node = init_java_command(cmd_name.clone(), command_tx, names.clone(), description);
+        let primary_name = cmd_name.trim_start_matches('/').to_string();
+        let alias_names: Vec<String> = names
+            .iter()
+            .filter(|n| *n != &primary_name)
+            .cloned()
+            .collect();
+
+        let node = init_java_command(primary_name.clone(), command_tx, description);
 
         let clean_perm = cmd_name.trim_start_matches('/');
         let permission = format!("patchbukkit:command.{clean_perm}");
@@ -62,7 +69,7 @@ pub fn ffi_native_bridge_register_command_impl(request: RegisterCommandRequest) 
             tracing::debug!("Permission '{}' registration notice: {}", permission, e);
         }
 
-        plugin_context.register_command(node, permission.clone());
+        plugin_context.register_command_with_aliases(node, &alias_names, permission.clone());
 
         tracing::info!(
             "Successfully registered command '{}' with names {:?} and permission '{}'",

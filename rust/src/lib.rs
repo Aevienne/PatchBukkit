@@ -116,7 +116,13 @@ async fn on_load_inner(plugin: &PatchBukkitPlugin, server: Arc<Context>) -> Resu
         }
 
         match rx.await {
-            Ok(Ok(())) => tracing::info!("PatchBukkit background initialization complete"),
+            Ok(Ok(())) => {
+                tracing::info!("PatchBukkit background initialization complete");
+                // Wings detects "online" via the egg's `Done (` console marker
+                // (Paper egg), which Pumpkin itself never prints. Emit it here
+                // so the panel leaves "starting" once the bridge is up.
+                tracing::info!("Done (PatchBukkit bridge online)");
+            }
             Ok(Err(e)) => tracing::error!("Failed to enable all plugins: {e}"),
             Err(e) => tracing::error!("Unable to receive response from enable all plugins: {e}"),
         }
@@ -187,6 +193,9 @@ impl PatchBukkitPlugin {
         let runtime_clone = runtime.clone();
         std::thread::Builder::new()
             .name("patchbukkit-jvm-worker".to_string())
+            // JVM Bootstrap does deep class-init recursion + JNA native calls;
+            // Rust default 2MiB stack risks native stack overflow -> SIGSEGV (exit 139)
+            .stack_size(8 * 1024 * 1024)
             .spawn(move || {
                 runtime_clone.block_on(async move {
                     JvmWorker::new(rx).attach_thread().await;

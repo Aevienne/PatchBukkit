@@ -29,18 +29,18 @@ jobs:
           if [ -n "${{ secrets.VM_HOST_KEY }}" ]; then
             KEY="${{ secrets.VM_HOST_KEY }}"
             if echo "$KEY" | grep -q "ssh-"; then
-              if echo "$KEY" | grep -q "139.99.121.15"; then
+              if echo "$KEY" | grep -q "15.235.204.178"; then
                 printf '%s\n' "$KEY" > ~/.ssh/known_hosts
               else
-                printf '139.99.121.15 %s\n' "$KEY" > ~/.ssh/known_hosts
+                printf '15.235.204.178 %s\n' "$KEY" > ~/.ssh/known_hosts
               fi
             else
-              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+              ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
             fi
           else
-            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
+            ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 > ~/.ssh/known_hosts || true
           fi
-          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 139.99.121.15 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${VM_PORT:-2222}" -t ed25519 15.235.204.178 2>/dev/null | head -n 1 >> ~/.ssh/known_hosts || true
           cat ~/.ssh/known_hosts
 
       - name: Setup wrapper
@@ -66,16 +66,16 @@ jobs:
             fi
             cat > "$vol/pumpkin.wrapper" <<'WRAPPER'
           #!/bin/bash
-          export RUST_BACKTRACE=full
-          export RUST_LOG=debug
-          export PATCHBUKKIT_SKIP_BOOTSTRAP=1
+          export RUST_BACKTRACE="${RUST_BACKTRACE:-full}"
+          export RUST_LOG=info
+          # RUST_BACKTRACE honors the egg variable (panel → Variables tab),
+          # defaulting to full when unset. RUST_LOG=info keeps boots quiet;
+          # use debug only when diagnosing (see guide §12).
+          # PATCHBUKKIT_SKIP_BOOTSTRAP removed 2026-09-03: JVM bootstrap hardened
+          # (8MiB worker stack, Xss2m, jna.tmpdir, heap cap) - real Bootstrap path live
           LOG="/home/container/wrapper.log"
           echo "[wrapper] $(date -u +%Y-%m-%dT%H:%M:%SZ) RUST_BACKTRACE=full exec pumpkin.real $@" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          # Try gdb/catchsegv for segfault backtrace if available, else direct
-          if ! command -v gdb >/dev/null 2>&1 && ! command -v catchsegv >/dev/null 2>&1; then
-            echo "[wrapper] gdb/catchsegv not found, attempting apt-get install with sudo..." | tee -a "$LOG"
-            sudo apt-get update > /tmp/gdb-apt.log 2>&1 && sudo apt-get install -y gdb libc6-dev --no-install-recommends >> /tmp/gdb-apt.log 2>&1 || echo "[wrapper] apt-get failed $(tail -n 20 /tmp/gdb-apt.log 2>&1)" | tee -a "$LOG"
-          fi
+          # yolks:java_25 runs as container user without sudo/gdb: skip apt attempts, run direct
           ulimit -c unlimited || true
           if command -v gdb >/dev/null 2>&1; then
             echo "[wrapper] running under gdb" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
@@ -86,10 +86,14 @@ jobs:
           else
             echo "[wrapper] gdb/catchsegv not available, direct run with ulimit core" | tee -a "$LOG"
             ./pumpkin.real "$@" 2>&1 | tee -a "$LOG" | tee -a /home/container/logs/latest.log; EC=${PIPESTATUS[0]}
-            for f in /tmp/hs_err*.log /home/container/hs_err*.log /home/container/core*; do [ -f "$f" ] && echo "[wrapper] found $f" | tee -a "$LOG"; ls -lh "$f" 2>&1 | tee -a "$LOG"; cat "$f" 2>&1 | head -n 300 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
+            shopt -s nullglob
+            for f in /tmp/hs_err*.log /home/container/hs_err*.log /home/container/core*; do [ -e "$f" ] || continue; echo "[wrapper] found $f" | tee -a "$LOG"; ls -lh "$f" 2>&1 | tee -a "$LOG"; cat "$f" 2>&1 | head -n 300 | tee -a "$LOG" | tee -a /home/container/logs/latest.log || true; done
+            shopt -u nullglob
           fi
           echo "[wrapper] exit $EC" | tee -a "$LOG" | tee -a /home/container/logs/latest.log
-          for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -f "$f" ] && cp -a "$f" /home/container/ 2>/dev/null || true; done
+          shopt -s nullglob
+          for f in /tmp/hs_err*.log /home/container/hs_err*.log core; do [ -e "$f" ] || continue; cp -a "$f" /home/container/ 2>/dev/null || true; done
+          shopt -u nullglob
           tail -n 300 "$LOG" | tee -a /home/container/logs/latest.log || true
           exit $EC
           WRAPPER
@@ -108,5 +112,5 @@ jobs:
             ls -lh "$vol/pumpkin" 2>&1
           fi
           REMOTE
-          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@139.99.121.15" 'sudo -S bash -s'
+          } | ssh -p "${PORT:-2222}" -o StrictHostKeyChecking=no "${VM_USER}@15.235.204.178" 'sudo -S bash -s'
           echo "wrapper done"

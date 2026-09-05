@@ -11,6 +11,12 @@ build = "build/main.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+# Deps track upstream master via branch spec; Cargo.lock pins the exact rev
+# (must stay layout-identical to the deployed Pumpkin DEV / [P] Lobby binary).
+# The bridge reads Pumpkin's Server/Config structs by offset: any struct
+# drift (e.g. LoggingConfig +4 fields on 2026-08-30) segfaults the first
+# FFI call (exit 139, no hs_err). Keep in sync with the deployed binary;
+# verify with the layout check in docs before bumping.
 pumpkin = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin" }
 pumpkin-data = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin-data" }
 pumpkin-protocol = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", branch = "master", package = "pumpkin-protocol" }
