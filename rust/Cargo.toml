@@ -16,12 +16,12 @@ crate-type = ["cdylib"]
 # drift (e.g. LoggingConfig +4 fields on 2026-08-30) segfaults the first
 # FFI call (exit 139, no hs_err). Keep in sync with the deployed binary;
 # verify with the layout check in docs before bumping.
-pumpkin = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin" }
-pumpkin-data = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin-data" }
-pumpkin-protocol = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin-protocol" }
-pumpkin-util = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin-util" }
-pumpkin-config = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin-config" }
-pumpkin-api-macros = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "99989ba3b6a292fcdf36473065e4d365b6f89928", package = "pumpkin-api-macros" }
+pumpkin = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin" }
+pumpkin-data = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin-data" }
+pumpkin-protocol = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin-protocol" }
+pumpkin-util = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin-util" }
+pumpkin-config = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin-config" }
+pumpkin-api-macros = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "aaadb7927246dc74a26f9b980044ef706a83b4fd", package = "pumpkin-api-macros" }
 
 tokio = "1"
 tracing = "0.1"
