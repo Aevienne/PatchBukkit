@@ -219,11 +219,11 @@ impl JvmWorker {
                             Ok(inner_res) => inner_res,
                             Err(e) => {
                                 tracing::error!("Failed to get tab complete: {e}");
-                                Ok(None)
+                                None
                             }
                         }
                     } else {
-                        Ok(None)
+                        None
                     };
 
                     let _ = respond_to.send(res);

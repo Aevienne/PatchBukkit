@@ -1,15 +1,18 @@
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use pumpkin::{
     command::{
-        CommandExecutor, CommandSender,
-        args::{Arg, ArgumentConsumer, GetClientSideArgParser, SuggestResult},
-        tree::{CommandTree, builder::argument},
+        CommandExecutor, CommandExecutorResult, CommandSender,
+        argument_builder::{ArgumentBuilder, CommandArgumentBuilder, argument, command},
+        argument_types::core::string::StringArgumentType,
+        context::command_context::CommandContext,
+        suggestion::{
+            provider::SuggestionProvider,
+            suggestions::{Suggestions, SuggestionsBuilder},
+        },
     },
     entity::EntityBase,
-};
-use pumpkin_protocol::java::client::play::{
-    ArgumentType, StringProtoArgBehavior, SuggestionProviders,
 };
 use tokio::sync::{mpsc, oneshot};
 
@@ -29,48 +32,16 @@ pub enum SimpleCommandSender {
     Player(String, String, bool),
 }
 
-pub struct AnyCommandNode {
-    command_tx: mpsc::Sender<JvmCommand>,
+pub struct JavaSuggestionProvider {
+    pub command_tx: mpsc::Sender<JvmCommand>,
 }
 
-impl GetClientSideArgParser for AnyCommandNode {
-    fn get_client_side_parser(&self) -> ArgumentType {
-        ArgumentType::String(StringProtoArgBehavior::GreedyPhrase)
-    }
-
-    fn get_client_side_suggestion_type_override(&self) -> Option<SuggestionProviders> {
-        Some(SuggestionProviders::AskServer)
-    }
-}
-
-impl ArgumentConsumer for AnyCommandNode {
-    fn consume<'a>(
-        &'a self,
-        _sender: &'a pumpkin::command::CommandSender,
-        _server: &'a pumpkin::server::Server,
-        args: &mut pumpkin::command::tree::RawArgs<'a>,
-    ) -> pumpkin::command::args::ConsumeResult<'a> {
-        let first_word = args.pop()?;
-        let mut msg = first_word.value.to_string();
-
-        while let Some(word) = args.pop() {
-            msg.push(' ');
-            msg.push_str(word.value);
-        }
-
-        Some(Arg::Msg(msg))
-    }
-
-    fn suggest(
-        &self,
-        sender: &pumpkin::command::CommandSender,
-        _server: &pumpkin::server::Server,
-        input: &str,
-    ) -> SuggestResult {
-        let location = if let Some(position) = sender.position()
-            && let Some(world) = sender.world()
-        {
-            let rotation = if let Some(player) = sender.as_player() {
+impl SuggestionProvider for JavaSuggestionProvider {
+    fn suggest(&self, context: &CommandContext, mut builder: SuggestionsBuilder) -> Suggestions {
+        let sender = &context.source.output;
+        let location = if let Some(world) = &context.source.world {
+            let position = context.source.position;
+            let rotation = if let Some(player) = context.source.as_player() {
                 let entity = player.get_entity();
                 let yaw = entity.yaw.load();
                 let pitch = entity.pitch.load();
@@ -87,8 +58,9 @@ impl ArgumentConsumer for AnyCommandNode {
         };
 
         let command_sender: SimpleCommandSender = sender.into();
+        let full_command = builder.input.clone();
 
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        let res = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             tokio::task::block_in_place(|| {
                 handle.block_on(async move {
                     let (tx, rx) = oneshot::channel();
@@ -96,20 +68,17 @@ impl ArgumentConsumer for AnyCommandNode {
                         .command_tx
                         .send(JvmCommand::GetCommandTabComplete {
                             command_sender,
-                            full_command: input.to_string(),
+                            full_command,
                             respond_to: tx,
                             location,
                         })
                         .await
                     {
                         tracing::warn!("Failed to send tab complete to JVM worker: {e}");
-                        return Ok(None);
+                        return None;
                     }
 
-                    match rx.await {
-                        Ok(res) => res,
-                        Err(_) => Ok(None),
-                    }
+                    rx.await.unwrap_or(None)
                 })
             })
         } else {
@@ -118,20 +87,29 @@ impl ArgumentConsumer for AnyCommandNode {
                 .command_tx
                 .blocking_send(JvmCommand::GetCommandTabComplete {
                     command_sender,
-                    full_command: input.to_string(),
+                    full_command,
                     respond_to: tx,
                     location,
                 })
             {
                 tracing::warn!("Failed to send tab complete to JVM worker: {e}");
-                return Ok(None);
+                return builder.build();
             }
 
-            match rx.blocking_recv() {
-                Ok(res) => res,
-                Err(_) => Ok(None),
+            rx.blocking_recv().unwrap_or(None)
+        };
+
+        if let Some(suggestions) = res {
+            for item in suggestions {
+                if let Some(tooltip) = item.tooltip {
+                    builder = builder.suggest_with_tooltip(item.suggestion, tooltip);
+                } else {
+                    builder = builder.suggest(item.suggestion);
+                }
             }
         }
+
+        builder.build()
     }
 }
 
@@ -154,25 +132,20 @@ impl From<&CommandSender> for SimpleCommandSender {
 }
 
 impl CommandExecutor for JavaCommandExecutor {
-    fn execute(
-        &self,
-        sender: &pumpkin::command::CommandSender,
-        _server: &pumpkin::server::Server,
-        args: &pumpkin::command::args::ConsumedArgs,
-    ) -> pumpkin::command::CommandResult {
-        if let CommandSender::Player(player) = sender {
+    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        if let CommandSender::Player(player) = &context.source.output {
             crate::java::native_callbacks::utils::cache_player(player.clone());
         }
 
-        let full_command = match args.get(ARG_ANY) {
-            Some(Arg::Msg(msg)) => {
+        let full_command = match context.get_argument::<String>(ARG_ANY) {
+            Ok(msg) => {
                 if self.cmd_name.starts_with('/') {
                     format!("{} {}", self.cmd_name, msg)
                 } else {
                     format!("/{} {}", self.cmd_name, msg)
                 }
             }
-            _ => {
+            Err(_) => {
                 if self.cmd_name.starts_with('/') {
                     self.cmd_name.clone()
                 } else {
@@ -181,7 +154,7 @@ impl CommandExecutor for JavaCommandExecutor {
             }
         };
 
-        let command_sender: SimpleCommandSender = sender.into();
+        let command_sender: SimpleCommandSender = (&context.source.output).into();
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             tokio::task::block_in_place(|| {
@@ -224,26 +197,20 @@ impl CommandExecutor for JavaCommandExecutor {
 pub fn init_java_command(
     cmd_name: impl Into<String>,
     command_tx: mpsc::Sender<JvmCommand>,
-    names: impl IntoIterator<Item: Into<String>>,
     description: impl Into<Cow<'static, str>>,
-) -> CommandTree {
+) -> CommandArgumentBuilder {
     let cmd_name = cmd_name.into();
-    CommandTree::new(names, description)
-        .execute(JavaCommandExecutor {
-            cmd_name: cmd_name.clone(),
-            command_tx: command_tx.clone(),
-        })
+    let executor = Arc::new(JavaCommandExecutor {
+        cmd_name: cmd_name.clone(),
+        command_tx: command_tx.clone(),
+    });
+
+    command(cmd_name, description)
+        .executes_arc(executor.clone())
         .then(
-            argument(
-                ARG_ANY,
-                AnyCommandNode {
-                    command_tx: command_tx.clone(),
-                },
-            )
-            .execute(JavaCommandExecutor {
-                cmd_name,
-                command_tx,
-            }),
+            argument(ARG_ANY, StringArgumentType::GreedyPhrase)
+                .suggests(JavaSuggestionProvider { command_tx })
+                .executes_arc(executor),
         )
 }
 
@@ -257,12 +224,12 @@ mod tests {
         let mut dispatcher = CommandDispatcher::default();
 
         let (tx, _rx) = mpsc::channel(100);
-        let names = vec!["fly".to_string(), "/fly".to_string(), "//fly".to_string()];
-        let tree = init_java_command("fly", tx, names, "Fly command");
-        dispatcher.register(tree, "patchbukkit:command.fly");
+        let aliases = vec!["/fly".to_string(), "//fly".to_string()];
+        let builder = init_java_command("fly", tx, "Fly command");
+        dispatcher.register_with_aliases(builder, &aliases);
 
-        assert!(dispatcher.get_tree("fly").is_ok());
-        assert!(dispatcher.get_tree("/fly").is_ok());
-        assert!(dispatcher.get_tree("//fly").is_ok());
+        assert!(dispatcher.has_command("fly"));
+        assert!(dispatcher.has_command("/fly"));
+        assert!(dispatcher.has_command("//fly"));
     }
 }

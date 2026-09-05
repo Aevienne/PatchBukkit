@@ -322,7 +322,7 @@ pub fn ffi_native_bridge_set_player_list_header_footer_impl(
         ctx.runtime.spawn(async move {
             let h = pumpkin_util::text::TextComponent::from_legacy_string(&header);
             let f = pumpkin_util::text::TextComponent::from_legacy_string(&footer);
-            player.set_tab_list_header_footer(h, f).await;
+            player.set_tab_list_header_footer(&h, &f);
         });
     })
 }
