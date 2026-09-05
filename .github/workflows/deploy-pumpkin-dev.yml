@@ -325,6 +325,11 @@ jobs:
             cat <<'REMOTE'
           set -euo pipefail
           vol=/var/lib/calagopus-wings/volumes/0663eb80-d3b8-45bd-86b1-579098d1f653
+          # Deploy-start marker FIRST (before any mutation): the deploy-watch
+          # janitor flags start-without-done as partial. Done marker closes it
+          # at the end (and on the skip_test early-exit below).
+          mkdir -p "$vol/.signals" 2>&1 || true
+          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:-unknown}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
           # Staged files are in /home/ghosty/ (~/) not /tmp (Permission denied on host /tmp per 2026-09-03)
           ls -lh /home/ghosty/libpatchbukkit.so /home/ghosty/patchbukkit.jar ~/libpatchbukkit.so ~/patchbukkit.jar /tmp/libpatchbukkit.so /tmp/patchbukkit.jar 2>&1 || echo "checking staged"
           # Prefer ~/ but fall back to /tmp or API-installed location
@@ -332,15 +337,14 @@ jobs:
           SRC_JAR=""; for p in /home/ghosty/patchbukkit.jar ~/patchbukkit.jar /tmp/patchbukkit.jar; do [ -f "$p" ] && SRC_JAR="$p" && break; done
           if [ -n "$SRC_SO" ]; then install -m 0755 "$SRC_SO" "$vol/plugins/libpatchbukkit.so"; else echo "WARN: libpatchbukkit.so not staged via SCP, expect API upload already at $vol/plugins/libpatchbukkit.so"; ls -lh "$vol/plugins/libpatchbukkit.so" 2>&1 || true; fi
           if [ -n "$SRC_JAR" ]; then install -m 0644 "$SRC_JAR" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; else echo "WARN: patchbukkit.jar not staged via SCP, expect API upload already at $vol/plugins/data/patchbukkit/jassets/patchbukkit.jar"; fi
-          mkdir -p "$vol/patchbukkit/patchbukkit-plugins" "$vol/plugins/data/patchbukkit/jassets"
+          mkdir -p "$vol/plugins/data/patchbukkit/jassets" "$vol/plugins/data/patchbukkit/patchbukkit-plugins"
           SRC_TEST=""; for p in /home/ghosty/patchbukkit-test-plugin.jar ~/patchbukkit-test-plugin.jar /tmp/patchbukkit-test-plugin.jar; do [ -f "$p" ] && SRC_TEST="$p" && break; done
-          [ -n "$SRC_TEST" ] && install -m 0644 "$SRC_TEST" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || echo "No test plugin staged (or via API)"
+          [ -n "$SRC_TEST" ] && install -m 0644 "$SRC_TEST" "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" || echo "No test plugin staged (or via API)"
           ls -lh "$vol/plugins/libpatchbukkit.so" "$vol/plugins/data/patchbukkit/jassets/patchbukkit.jar" 2>&1
-          cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
+          cleanup() { mv -f "$vol/plugins/libpatchbukkit.so" "$vol/plugins/libpatchbukkit.so.disabled" || true; mv -f "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar" "$vol/plugins/data/patchbukkit/patchbukkit-plugins/patchbukkit-test-plugin.jar.disabled" || true; }
           trap cleanup EXIT
-          if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; exit 0; fi
+          if [ "${{ inputs.skip_test }}" = "true" ]; then echo "skip_test=true — installed only, not running pumpkin"; echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-done.json" 2>&1 || true; exit 0; fi
           set +e
-          echo "{\"jar\":\"patchbukkit-$(date -u +%Y%m%d%H%M%S)\",\"by\":\"github-actions/${GITHUB_SHA:-unknown}\"}" > "$vol/.signals/.deploy-notice-start.json" 2>&1 || mkdir -p "$vol/.signals" && echo "{\"jar\":\"patchbukkit\",\"by\":\"github-actions\"}" > "$vol/.signals/.deploy-notice-start.json" || true
           docker run --rm --entrypoint "" -e RUST_BACKTRACE=full -e RUST_LOG=debug -v "$vol":/home/container -w /home/container ghcr.io/ptero-eggs/yolks:java_25 bash -c 'timeout 90 ./pumpkin 2>&1 | tee /home/container/pumpkin-patchbukkit-test.log; echo EXIT_CODE:${PIPESTATUS[0]} > /home/container/pumpkin-exit-code.log; cat /home/container/pumpkin-patchbukkit-test.log'
           PUMPKIN_EXIT=$(cat "$vol/pumpkin-exit-code.log" 2>/dev/null || echo "unknown")
           echo "Pumpkin exit: $PUMPKIN_EXIT"
