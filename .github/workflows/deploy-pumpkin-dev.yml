@@ -12,6 +12,17 @@ on:
         required: false
         type: boolean
         default: false
+  # Optional auto-chain: fires when "Build Linux bridge" completes on master,
+  # but the deploy job below only runs when explicitly opted in (repo Variable
+  # AUTO_DEPLOY_PATCHBUKKIT=true, or head commit message contains [deploy]).
+  # Manual dispatch always runs. See job `if:` gate.
+  workflow_run:
+    workflows:
+      - Build Linux bridge
+    types:
+      - completed
+    branches:
+      - master
 
 concurrency:
   group: deploy-pumpkin-dev
@@ -19,7 +30,20 @@ concurrency:
 
 jobs:
   deploy:
+    # Manual dispatch: always run. Auto-chain: only on build success + opt-in.
+    # Opt-in = repo Settings → Variables → Actions → AUTO_DEPLOY_PATCHBUKKIT=true,
+    # or include [deploy] in the build commit message. Auto-chain always runs
+    # the 90s smoke test (skip_test is dispatch-only).
+    # Human gate: add a required reviewer on the `pumpkin-dev` GitHub
+    # Environment to make every auto-deploy pause for one click
+    # (Settings → Environments). Until then the Variable/trailer is the gate.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       (vars.AUTO_DEPLOY_PATCHBUKKIT == 'true' ||
+        contains(github.event.workflow_run.head_commit.message, '[deploy]')))
     runs-on: ubuntu-latest
+    environment: pumpkin-dev
     permissions:
       contents: read
       actions: read
@@ -29,7 +53,8 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          # Dispatch: inputs.ref. Auto-chain: the exact commit that just built.
+          ref: ${{ inputs.ref || github.event.workflow_run.head_sha }}
 
       - name: Download latest build artifact for ref
         id: dl
@@ -39,7 +64,8 @@ jobs:
           workflow: build-linux.yml
           workflow_search: true
           workflow_conclusion: success
-          branch: ${{ inputs.ref }}
+          # Dispatch: inputs.ref. Auto-chain: the branch that just built.
+          branch: ${{ inputs.ref || github.event.workflow_run.head_branch }}
           name: patchbukkit-linux-*
           name_is_regexp: true
           path: artifact
@@ -92,10 +118,10 @@ jobs:
           echo "Attempting gh run list for build-linux.yml ..."
           gh --version 2>&1 | head -n 1 || true
           # List recent successful runs for that workflow+branch
-          gh run list --workflow=build-linux.yml --branch="${{ inputs.ref }}" --status=success --limit 5 2>&1 | head -n 100 || true
+          gh run list --workflow=build-linux.yml --branch="${{ inputs.ref || github.event.workflow_run.head_branch }}" --status=success --limit 5 2>&1 | head -n 100 || true
           gh run list --workflow=build-linux.yml --status=success --limit 5 2>&1 | head -n 100 || true
           # Get latest successful run id for that branch
-          RUN_ID=$(gh run list --workflow=build-linux.yml --branch="${{ inputs.ref }}" --status=success --limit 1 --json databaseId --jq '.[0].databaseId' 2>&1 | tr -d '\r' | grep -E '^[0-9]+$' || true)
+          RUN_ID=$(gh run list --workflow=build-linux.yml --branch="${{ inputs.ref || github.event.workflow_run.head_branch }}" --status=success --limit 1 --json databaseId --jq '.[0].databaseId' 2>&1 | tr -d '\r' | grep -E '^[0-9]+$' || true)
           if [ -z "$RUN_ID" ]; then
             RUN_ID=$(gh run list --workflow=build-linux.yml --status=success --limit 1 --json databaseId --jq '.[0].databaseId' 2>&1 | tr -d '\r' | grep -E '^[0-9]+$' || true)
           fi
