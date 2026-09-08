@@ -3457,8 +3457,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "aes 0.9.3",
  "arc-swap",
@@ -3484,7 +3484,7 @@ dependencies = [
  "num-bigint 0.5.1",
  "ordered-float",
  "postcard",
- "pumpkin-codecs",
+ "pumpkin-command",
  "pumpkin-config",
  "pumpkin-data",
  "pumpkin-gametest",
@@ -3527,8 +3527,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-api-macros"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -3538,17 +3538,33 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-codecs"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "serde_json",
  "tracing",
 ]
 
 [[package]]
+name = "pumpkin-command"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
+dependencies = [
+ "pumpkin-codecs",
+ "pumpkin-data",
+ "pumpkin-nbt",
+ "pumpkin-protocol",
+ "pumpkin-util",
+ "rustc-hash",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "pumpkin-config"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "pumpkin-util",
  "serde",
@@ -3559,8 +3575,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-data"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "crc-fast",
  "phf",
@@ -3572,8 +3588,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-gametest"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "async-trait",
  "pumpkin-data",
@@ -3588,8 +3604,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-inventory"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "pumpkin-data",
  "pumpkin-nbt",
@@ -3604,8 +3620,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-macros"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "heck",
  "proc-macro-error2",
@@ -3617,8 +3633,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-nbt"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "bytes",
  "cesu8",
@@ -3631,8 +3647,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-plugin-runtime"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "futures",
  "thiserror 2.0.20",
@@ -3643,8 +3659,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-protocol"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "aes 0.9.3",
  "async-compression",
@@ -3669,8 +3685,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-util"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -3697,8 +3713,8 @@ dependencies = [
 
 [[package]]
 name = "pumpkin-world"
-version = "0.1.0-dev+26.2-26.45"
-source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#55762a50d21ecaff480c95f1ac4017342b017d02"
+version = "0.1.0+26.2-26.45"
+source = "git+https://github.com/Pumpkin-MC/Pumpkin.git?branch=master#786e2fbf782f92113543fcb46eaf95ba53835d41"
 dependencies = [
  "arc-swap",
  "bitflags 2.13.1",
