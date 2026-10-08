@@ -25,30 +25,31 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
+      - parallel:
+          - name: Set up Java
+            uses: actions/setup-java@v5
+            with:
+              distribution: temurin
+              java-version: '25'
+              cache: gradle
+
+          - name: Set up Rust
+            uses: dtolnay/rust-toolchain@stable
+
+          - name: Install sccache
+            uses: mozilla-actions/sccache-action@v0.0.9
+
+          - name: Cache Rust
+            uses: Swatinem/rust-cache@v2
+            with:
+              shared-key: linux-bridge
+              cache-all-crates: true
+              save-if: ${{ github.ref == 'refs/heads/diag/playasia-jvm-core-dump' || github.ref == 'refs/heads/master' }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-bridge
-          cache-all-crates: true
-          save-if: ${{ github.ref == 'refs/heads/diag/playasia-jvm-core-dump' || github.ref == 'refs/heads/master' }}
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Install protobuf + mold
         run: |
@@ -66,6 +67,9 @@ jobs:
           CARGO_BUILD_JOBS: 2
           CARGO_PROFILE_RELEASE_LTO: 'false'
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+          # mold was already installed above but never wired in: link the
+          # 157 MB .so with it instead of GNU ld. Same code in, faster link.
+          RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
         run: |
           sccache --start-server || true
           cargo build --release --locked --jobs 2 --verbose
