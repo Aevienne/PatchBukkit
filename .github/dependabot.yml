@@ -1,0 +1,17 @@
+# Keep CI action pins and Java/Rust deps moving in reviewable PRs (no auto-merge).
+# NOTE: java/gradle.properties pins no versions; floating paperweight SNAPSHOTs
+# are the known drift risk and need a maintainer decision (pin vs follow).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "gradle"
+    directory: "/java"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
